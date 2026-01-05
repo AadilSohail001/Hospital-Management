@@ -1,0 +1,20 @@
+.app-container {
+  max-width: 1610px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+header {
+  width: 98%;
+  position: relative;
+  z-index: 1001;
+}
+
+footer {
+  background-color: #777;
+  padding: 10px;
+  text-align: center;
+  color: white;
+  margin-top: 50px;
+}

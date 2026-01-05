@@ -1,0 +1,76 @@
+/* Login.css - Perfectly centered form */
+.login-container {
+    width: 370px;
+    margin: -60px auto;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+/* Centered heading */
+.login-container h2 {
+    text-align: center;
+    margin: 0 0 30px 0;
+    width: 100%;
+    color: #2c3e50;
+}
+
+/* Centered form */
+.login-container form {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+/* Input fields - full width but centered in container */
+.login-container input {
+    width: 100%;
+    margin: 10px 0;
+    padding: 10px;
+    box-sizing: border-box;
+    text-align: left;
+}
+
+/* Centered button */
+.login-container button {
+    width: 100%;
+    padding: 10px;
+    cursor: pointer;
+    margin-top: 15px;
+}
+
+/* Background styling if needed */
+body {
+    margin: 0;
+    padding: 0;
+    background: linear-gradient(135deg, rgba(41, 128, 185, 0.85), rgba(52, 152, 219, 0.85));
+    min-height: 100vh;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .login-container {
+        width: 90%;
+        max-width: 300px;
+        margin: 40px auto;
+    }
+}
+
+@media (max-width: 480px) {
+    .login-container {
+        width: 95%;
+        padding: 10px;
+    }
+
+    .login-container h2 {
+        font-size: 24px;
+        margin-bottom: 20px;
+    }
+}

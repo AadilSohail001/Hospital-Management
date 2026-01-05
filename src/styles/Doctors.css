@@ -1,0 +1,189 @@
+/* ========================= Doctors.css ========================= */
+
+
+/* Title */
+.doctors-container h2 {
+    color: #2c3e50;
+    margin-top: 0;
+    font-size: 1.8rem;
+    border-bottom: 2px solid #667eea;
+    padding-bottom: 0.5rem;
+}
+
+/* Table */
+.doctors-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 15px;
+
+
+}
+
+.doctors-table th,
+.doctors-table td {
+    text-align: center;
+    padding: 12px;
+    border-bottom: 1px solid #e0e0e0;
+    font-size: 0.95rem;
+}
+
+.doctors-table thead {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+}
+
+/* Hover effect */
+.doctors-table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+/* Action Buttons */
+.action-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.btn-edit,
+.btn-delete {
+    border: none;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: 0.2s;
+}
+
+.btn-edit {
+    background: rgba(102, 126, 234, 0.15);
+    color: #667eea;
+}
+
+.btn-edit:hover {
+    background: rgba(102, 126, 234, 0.25);
+}
+
+.btn-delete {
+    background: rgba(244, 67, 54, 0.15);
+    color: #F44336;
+}
+
+.btn-delete:hover {
+    background: rgba(244, 67, 54, 0.25);
+}
+
+/* Modal Overlay */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(3px);
+    z-index: 999;
+}
+
+/* Modal Box */
+.modal-box {
+    background: #fff;
+    padding: 2rem;
+    border-radius: 12px;
+    width: 95%;
+    max-width: 450px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    animation: modalSlide 0.3s ease;
+}
+
+/* Modal Animation */
+@keyframes modalSlide {
+    from {
+        opacity: 0;
+        transform: translateY(-25px) scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.modal-box h2 {
+    margin-bottom: 1.5rem;
+    color: #2c3e50;
+}
+
+/* Form Inputs */
+.doctor-form input {
+    width: 100%;
+    padding: 0.75rem;
+    margin-bottom: 1rem;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background-color: #f8f9fa;
+    transition: 0.3s;
+}
+
+.doctor-form input:focus {
+    border-color: #667eea;
+    background-color: #fff;
+    box-shadow: 0 0 5px rgba(102, 126, 234, 0.4);
+}
+
+/* Modal Buttons */
+.modal-buttons {
+    display: flex;
+    gap: 10px;
+    margin-top: 1rem;
+}
+
+.save-btn,
+.cancel-btn {
+    flex: 1;
+    padding: 0.8rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: 0.2s;
+}
+
+.save-btn {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff;
+}
+
+.save-btn:hover {
+    transform: translateY(-2px);
+}
+
+.cancel-btn {
+    background: #ddd;
+}
+
+.cancel-btn:hover {
+    background: #bbb;
+    transform: translateY(-2px);
+}
+
+/* Add Doctor Button */
+.doctors-container .save-btn {
+    display: inline-block;
+    margin-bottom: 0px;
+}
+
+/* Pagination */
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 15px;
+    gap: 10px;
+}
+
+.page-info {
+    font-size: 0.95rem;
+    color: #2c3e50;
+}

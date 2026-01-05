@@ -1,0 +1,184 @@
+/* ========================= Patients.css ========================= */
+
+/* Content Title */
+.patients-title {
+    color: #2c3e50;
+    margin-top: 0;
+    font-size: 1.8rem;
+    border-bottom: 2px solid #667eea;
+    padding-bottom: 0.5rem;
+}
+
+/* Table wrapper */
+.table-responsive {
+    overflow-x: auto;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+    margin-top: 20px;
+}
+
+/* TABLE */
+.patients-table {
+    width: 100%;
+    min-width: 650px;
+    border-collapse: collapse;
+}
+
+.patients-table thead {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.patients-table th,
+.patients-table td {
+    padding: 1rem;
+    text-align: center;
+    font-size: 0.95rem;
+}
+
+.patients-table tbody tr {
+    border-bottom: 1px solid #e0e0e0;
+    transition: 0.2s;
+}
+
+.patients-table tbody tr:hover {
+    background: #f8f9fa;
+}
+
+/* Empty Message */
+.no-patients {
+    text-align: center;
+    padding: 2rem;
+    color: #7f8c8d;
+    font-size: 1.1rem;
+}
+
+/* Action Buttons */
+.action-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 0.75rem;
+}
+
+.btn-edit,
+.btn-delete {
+    border: none;
+    padding: 7px 13px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-edit {
+    background: rgba(102, 126, 234, 0.15);
+    color: #667eea;
+}
+
+.btn-edit:hover {
+    background: rgba(102, 126, 234, 0.25);
+}
+
+.btn-delete {
+    background: rgba(244, 67, 54, 0.15);
+    color: #F44336;
+}
+
+.btn-delete:hover {
+    background: rgba(244, 67, 54, 0.25);
+}
+
+/* ================= Modal ================= */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(3px);
+    animation: fadeIn .3s ease;
+    z-index: 999;
+}
+
+.modal-box {
+    background: #fff;
+    padding: 2rem;
+    border-radius: 12px;
+    width: 95%;
+    max-width: 450px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    animation: modalSlide .3s ease;
+}
+
+@keyframes modalSlide {
+    from {
+        opacity: 0;
+        transform: translateY(-25px) scale(.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.modal-box h2 {
+    margin-bottom: 1.5rem;
+    color: #2c3e50;
+}
+
+/* Inputs */
+.modal-form input {
+    width: 93%;
+    padding: .75rem;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: #f8f9fa;
+    margin-bottom: 1rem;
+    transition: .3s;
+}
+
+.modal-form input:focus {
+    border-color: #667eea;
+    background: #fff;
+    box-shadow: 0 0 5px rgba(102, 126, 234, .4);
+}
+
+/* Buttons */
+.modal-buttons {
+    display: flex;
+    gap: 10px;
+    margin-top: 1rem;
+}
+
+.save-btn,
+.cancel-btn {
+    flex: 1;
+    padding: .8rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: .2s;
+    font-size: 1rem;
+}
+
+.save-btn {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+}
+
+.save-btn:hover {
+    transform: translateY(-2px);
+}
+
+.cancel-btn {
+    background: #ddd;
+}
+
+.cancel-btn:hover {
+    background: #bbb;
+    transform: translateY(-2px);
+}

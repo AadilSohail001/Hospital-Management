@@ -1,0 +1,123 @@
+/* Signup.css - Perfectly centered form */
+
+/* Main container - centers everything */
+.signup-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 90vh;
+    padding: 0px;
+    background: linear-gradient(135deg, rgba(41, 128, 185, 0.85), rgba(52, 152, 219, 0.85));
+}
+
+/* Centered heading */
+.signup-container h2 {
+    text-align: center;
+    color: #2c3e50;
+    margin-bottom: 30px;
+    font-size: 28px;
+    width: 100%;
+}
+
+/* Centered form */
+.signup-container form {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    padding: 40px;
+    border-radius: 20px;
+    width: 100%;
+    max-width: 450px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+/* Input fields - full width but centered in form */
+.signup-container form .my-input {
+    width: 100%;
+    text-align: left;
+}
+
+/* Checkbox group centered */
+.checkbox-group {
+    margin: 15px 0;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    cursor: pointer;
+    font-size: 16px;
+    color: #333;
+    width: 100%;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+/* Doctor fields - centered */
+.doctor-fields {
+    display: none;
+    flex-direction: column;
+    gap: 15px;
+    margin: 15px 0;
+    padding: 15px;
+    background-color: rgba(52, 152, 219, 0.1);
+    border-radius: 8px;
+    border-left: 4px solid #3498db;
+    width: 100%;
+    box-sizing: border-box;
+    text-align: left;
+}
+
+.checkbox-label input[type="checkbox"]:checked~.doctor-fields {
+    display: flex;
+}
+
+/* Submit button centered */
+.signup-container form button[type="submit"] {
+    align-self: center;
+    width: auto;
+    min-width: 150px;
+    padding: 12px 30px;
+    margin-top: 10px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .signup-container form {
+        padding: 30px 20px;
+        max-width: 90%;
+    }
+
+    .signup-container h2 {
+        font-size: 24px;
+    }
+}
+
+@media (max-width: 480px) {
+    .signup-container form {
+        padding: 25px 15px;
+        max-width: 95%;
+    }
+
+    .checkbox-label {
+        font-size: 14px;
+    }
+
+    .doctor-fields {
+        padding: 10px;
+    }
+}

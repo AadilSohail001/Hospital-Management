@@ -1,0 +1,124 @@
+/* Overlay */
+.reschedule-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1100;
+}
+
+/* Modal container */
+.reschedule-modal {
+    width: 420px;
+    background: #ffffff;
+    border-radius: 10px;
+    padding: 29px 22px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+    animation: rescheduleFadeIn 0.2s ease-in-out;
+}
+
+/* Header */
+.reschedule-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 18px;
+}
+
+.reschedule-title {
+    font-size: 18px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.reschedule-close-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 18px;
+}
+
+/* Form */
+.reschedule-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.reschedule-group label {
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.reschedule-group input {
+    width: 95%;
+    padding: 8px 10px;
+    font-size: 14px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    outline: none;
+}
+
+.reschedule-group input:focus {
+    border-color: #6675ea;
+}
+
+/* Actions */
+.reschedule-actions {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 7px;
+}
+
+.reschedule-save-btn {
+    background: #6675ea;
+    color: #fff;
+    border: none;
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.reschedule-save-btn:hover {
+    background: #5564d8;
+}
+
+.reschedule-cancel-btn {
+    background: #f1f1f1;
+    border: none;
+    padding: 8px 70px;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.reschedule-cancel-btn:hover {
+    background: #e2e2e2;
+}
+
+
+/* Animation */
+@keyframes rescheduleFadeIn {
+    from {
+        transform: scale(0.95);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
