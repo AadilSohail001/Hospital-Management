@@ -49,7 +49,7 @@ export default function Login() {
             if (user.email === email && user.password === password) {
                 foundUser = user;
                 // Check if it's a doctor
-                isUserDoctor = user.isDoctor === true || user.isDoctor === "1";
+                isUserDoctor = user.isDoctor === "1";
                 break;
             }
         }
@@ -59,7 +59,7 @@ export default function Login() {
                 const user = doctorsData[i];
                 if (user.email === email && user.password === password) {
                     foundUser = user;
-                    isUserDoctor = true;
+                    isUserDoctor = "1";
                     break;
                 }
             }
@@ -91,7 +91,7 @@ export default function Login() {
                     password: foundUser.password,
                     specialization: foundUser.specialization,
                     contact: foundUser.contact,
-                    isDoctor: true
+                    isDoctor: "1"
                 });
                 localStorage.setItem("doctors", JSON.stringify(doctorsData));
             }

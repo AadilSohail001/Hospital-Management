@@ -69,7 +69,7 @@ export default function Signup() {
         if (isDoctor) {
             const doctorObj = {
                 ...userObj,
-                isDoctor: true,
+                isDoctor: "1",
                 specialization: "To be added",
                 contact: "To be added"
             };
