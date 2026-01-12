@@ -63,15 +63,7 @@ export default function Doctors() {
     const [email, setEmail] = useState("");
 
     // Validation helpers (match backend rules)
-    const isValidName = (name) => {
-        if (!name) return false;
-        return /^[A-Za-z]+$/.test(name);
-    };
 
-    const isValidEmail = (email) => {
-        if (!email) return false;
-        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    };
 
     // Update both arrays when doctors change
     // Removed - no longer needed since we fetch from backend
@@ -89,15 +81,6 @@ export default function Doctors() {
                 email: email
             };
 
-            // Client-side validation matching backend
-            if (!isValidName(updateData.name)) {
-                toast.error("Invalid name entered (letters only, no spaces)");
-                return;
-            }
-            if (!isValidEmail(updateData.email)) {
-                toast.error("Invalid email format");
-                return;
-            }
 
             try {
                 const token = localStorage.getItem("token");
