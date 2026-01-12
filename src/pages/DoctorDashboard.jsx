@@ -10,11 +10,10 @@ export default function DoctorDashboard() {
     const [appointments, setAppointments] = useState([]);
 
     useEffect(() => {
-        const appData = JSON.parse(localStorage.getItem("appData")) || {};
-        const currentUser = appData.currentUser;
+        const stored = localStorage.getItem("currentUser");
+        const currentUser = stored ? JSON.parse(stored) : null;
 
-
-        if (!currentUser || !currentUser.isDoctor) {
+        if (!currentUser || !(currentUser.role_ID === 1 || currentUser.isDoctor)) {
             navigate("/");
             return;
         }
@@ -65,10 +64,10 @@ export default function DoctorDashboard() {
     const updateAppointmentDoctorId = () => {
         const allAppointments = JSON.parse(localStorage.getItem("appointments")) || [];
         const doctorsData = JSON.parse(localStorage.getItem("doctors")) || [];
-        const appData = JSON.parse(localStorage.getItem("appData")) || {};
-        const currentUser = appData.currentUser;
+        const stored = localStorage.getItem("currentUser");
+        const currentUser = stored ? JSON.parse(stored) : null;
 
-        if (!currentUser || !currentUser.isDoctor) return;
+        if (!currentUser || !(currentUser.role_ID === 1 || currentUser.isDoctor)) return;
 
         const currentDoctor = doctorsData.find(d => d.email === currentUser.email);
         if (!currentDoctor) return;

@@ -1,36 +1,50 @@
 import React, { useState, useEffect } from "react";
 import { Icon } from "@iconify/react";
+import { toast } from "react-toastify";
 import Pagination from "../components/Pagination";
 import "../styles/Doctors.css";
 
+const API_BASE_URL = "http://localhost:8080/hospital";
+
 export default function Doctors() {
-    // Load Doctors - always sync with appData
-    const [doctors, setDoctors] = useState(() => {
-        const appData = JSON.parse(localStorage.getItem("appData")) || { users: [] };
+    // Load Doctors - from backend API
+    const [doctors, setDoctors] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-        // Get only doctors from appData users
-        const doctorsFromAppData = appData.users.filter(user =>
-            user.isDoctor === true || user.isDoctor === "1"
-        );
+    useEffect(() => {
+        const loadDoctors = async () => {
+            setLoading(true);
+            try {
+                const token = localStorage.getItem("token");
+                const response = await fetch(`${API_BASE_URL}/users/show-all`, {
+                    method: "GET",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`
+                    }
+                });
 
-        // Also check doctors array for any additional doctors
-        const savedDoctors = JSON.parse(localStorage.getItem("doctors")) || [];
-
-        // Merge both arrays, giving priority to appData
-        const allDoctors = [...doctorsFromAppData];
-
-        // Add doctors from doctors array if not already in appData
-        savedDoctors.forEach(savedDoctor => {
-            const exists = allDoctors.some(d =>
-                d.email === savedDoctor.email || d.id === savedDoctor.id
-            );
-            if (!exists) {
-                allDoctors.push(savedDoctor);
+                if (response.ok) {
+                    const data = await response.json();
+                    const allUsers = data.users || data.data || data || [];
+                    const doctorsList = Array.isArray(allUsers)
+                        ? allUsers.filter(user => user.role === "doctor" || user.role === "Doctor")
+                        : [];
+                    setDoctors(doctorsList);
+                } else {
+                    console.error("Failed to fetch doctors");
+                    setDoctors([]);
+                }
+            } catch (error) {
+                console.error("Error fetching doctors:", error);
+                setDoctors([]);
+            } finally {
+                setLoading(false);
             }
-        });
+        };
 
-        return allDoctors;
-    });
+        loadDoctors();
+    }, []);
 
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
@@ -48,139 +62,125 @@ export default function Doctors() {
     const [contact, setContact] = useState("");
     const [email, setEmail] = useState("");
 
+    // Validation helpers (match backend rules)
+    const isValidName = (name) => {
+        if (!name) return false;
+        return /^[A-Za-z]+$/.test(name);
+    };
+
+    const isValidEmail = (email) => {
+        if (!email) return false;
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    };
+
     // Update both arrays when doctors change
-    useEffect(() => {
-        if (doctors.length > 0) {
-            // Update doctors array (simplified version without passwords)
-            const simplifiedDoctors = doctors.map(d => ({
-                id: d.id,
-                name: d.name,
-                email: d.email,
-                specialization: d.specialization,
-                contact: d.contact,
-                isDoctor: true
-            }));
-
-            localStorage.setItem("doctors", JSON.stringify(simplifiedDoctors));
-
-            // Update appData users array - preserve passwords
-            const appData = JSON.parse(localStorage.getItem("appData")) || { users: [] };
-
-            // Create a map of existing users to preserve their passwords
-            const existingUsersMap = new Map();
-            appData.users.forEach(user => {
-                existingUsersMap.set(user.email, user.password);
-            });
-
-            // Create updated users list
-            const nonDoctorUsers = appData.users.filter(user =>
-                user.isDoctor !== true && user.isDoctor !== "1"
-            );
-
-            const doctorUsers = doctors.map(doctor => {
-                // Use existing password if available, otherwise use doctor's password or default
-                const existingPassword = existingUsersMap.get(doctor.email);
-
-                return {
-                    id: doctor.id,
-                    name: doctor.name,
-                    email: doctor.email,
-                    password: existingPassword || doctor.password || "default123",
-                    specialization: doctor.specialization,
-                    contact: doctor.contact,
-                    isDoctor: true
-                };
-            });
-
-            const updatedUsers = [...nonDoctorUsers, ...doctorUsers];
-
-            // Save updated appData
-            localStorage.setItem("appData", JSON.stringify({
-                ...appData,
-                users: updatedUsers
-            }));
-        }
-    }, [doctors]);
+    // Removed - no longer needed since we fetch from backend
 
     // Save Form (Add or Update)
-    function handleSave(e) {
+    async function handleSave(e) {
         e.preventDefault();
 
-        // Get the current doctor if editing
         const existingDoctor = editIndex !== null ? doctors[editIndex] : null;
 
-        // Generate ID if not provided
-        // eslint-disable-next-line react-hooks/purity
-        const newDoctorId = doctorId || Date.now().toString();
-        const newDoctor = {
-            id: newDoctorId,
-            name: doctorName,
-            specialization,
-            contact,
-            email: email || `doctor${newDoctorId}@hospital.com`,
-            password: existingDoctor?.password || "default123", // Preserve existing password
-            isDoctor: true
-        };
-
         if (editIndex !== null) {
-            // Update in doctors array - preserve all existing data
-            const updated = [...doctors];
-            updated[editIndex] = {
-                ...existingDoctor, // Keep all existing properties
+            // Update existing doctor via API
+            const updateData = {
                 name: doctorName,
-                specialization,
-                contact,
-                email: email || existingDoctor.email
-                // Don't touch the password!
+                email: email
             };
-            setDoctors(updated);
-        } else {
-            // Add new doctor
-            setDoctors([...doctors, newDoctor]);
-        }
 
-        resetForm();
+            // Client-side validation matching backend
+            if (!isValidName(updateData.name)) {
+                toast.error("Invalid name entered (letters only, no spaces)");
+                return;
+            }
+            if (!isValidEmail(updateData.email)) {
+                toast.error("Invalid email format");
+                return;
+            }
+
+            try {
+                const token = localStorage.getItem("token");
+                const response = await fetch(`${API_BASE_URL}/users/update-user/${existingDoctor.user_Id}`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`
+                    },
+                    body: JSON.stringify(updateData)
+                });
+
+                if (response.ok) {
+                    const updatedDoctors = [...doctors];
+                    updatedDoctors[editIndex] = {
+                        ...existingDoctor,
+                        user_name: doctorName,
+                        user_email: email,
+                        specialization: specialization,
+                        contact: contact
+                    };
+                    setDoctors(updatedDoctors);
+                    toast.success("Doctor updated successfully!");
+                    resetForm();
+                } else {
+                    const errorData = await response.json();
+                    toast.error(errorData.alert || errorData.message || "Failed to update doctor");
+                    console.error("Update failed:", errorData);
+                }
+            } catch (error) {
+                console.error("Error updating doctor:", error);
+                toast.error("Error updating doctor");
+            }
+        } else {
+            // For adding new doctors, prompt user to use backend or return message
+            toast.info("New doctors must be registered via the Sign Up page with 'Register as Doctor' option.");
+            resetForm();
+        }
     }
 
     function handleEdit(index) {
-        const d = doctors[index];
-        setDoctorId(d.id);
-        setDoctorName(d.name);
+        const actualIndex = index + firstIndex;
+        const d = doctors[actualIndex];
+        setDoctorId(d.user_Id || d.id);
+        setDoctorName(d.user_name || d.name || "");
         setSpecialization(d.specialization || "");
         setContact(d.contact || "");
-        setEmail(d.email || "");
-        setEditIndex(index);
+        setEmail(d.user_email || d.email || "");
+        setEditIndex(actualIndex);
         setShowModal(true);
     }
 
-    function handleDelete(index) {
+    async function handleDelete(index) {
         if (window.confirm("Are you sure you want to delete this doctor?")) {
-            const doctorToDelete = doctors[index];
+            const actualIndex = index + firstIndex;
+            const doctorToDelete = doctors[actualIndex];
 
-            // Delete from doctors array
-            const updatedDoctors = doctors.filter((_, i) => i !== index);
-            setDoctors(updatedDoctors);
+            try {
+                const token = localStorage.getItem("token");
+                const response = await fetch(`${API_BASE_URL}/users/delete-user/${doctorToDelete.user_Id}`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`
+                    }
+                });
 
-            // Update appData - convert to regular user (preserve password)
-            const appData = JSON.parse(localStorage.getItem("appData")) || { users: [] };
-            const updatedUsers = appData.users.map(user => {
-                if (user.email === doctorToDelete.email || user.id === doctorToDelete.id) {
-                    return {
-                        ...user,
-                        isDoctor: false, // Convert to regular user
-                        specialization: undefined,
-                        contact: undefined
-                    };
+                if (response.ok) {
+                    const updatedDoctors = doctors.filter((_, i) => i !== actualIndex);
+                    setDoctors(updatedDoctors);
+                    toast.success("Doctor deleted successfully!");
+
+                    // Reset to first page if current page has no doctors
+                    if (paginatedDoctors.length === 1 && currentPage > 1) {
+                        setCurrentPage(prev => Math.max(1, prev - 1));
+                    }
+                } else {
+                    toast.error("Failed to delete doctor");
                 }
-                return user;
-            });
-
-            localStorage.setItem("appData", JSON.stringify({
-                ...appData,
-                users: updatedUsers
-            }));
-
-            alert("Doctor deleted successfully! They have been converted to a regular user.");
+            } catch (error) {
+                console.error("Error deleting doctor:", error);
+                toast.error("Error deleting doctor");
+            }
         }
     }
 
@@ -208,70 +208,74 @@ export default function Doctors() {
         <div className="doctors-container">
             <h2>Doctors</h2>
 
-            <button className="save-btn" style={{ marginBottom: 10 }} onClick={() => setShowModal(true)}>
-                + Add Doctor
-            </button>
-
-            {/* TABLE */}
-            {doctors.length === 0 ? (
-                <div className="no-doctors">
-                    <Icon icon="mdi:doctor" className="no-doctors-icon" />
-                    <p>No doctors registered yet.</p>
-                    <p className="no-doctors-subtitle">Click "Add Doctor" to add your first doctor.</p>
+            {loading ? (
+                <div style={{ textAlign: "center", padding: "2rem" }}>
+                    <p>Loading doctors...</p>
                 </div>
             ) : (
                 <>
-                    <table className="doctors-table">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Name</th>
-                                <th>Email</th>
-                                <th>Specialization</th>
-                                <th>Contact</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
+                    {/* TABLE */}
+                    {doctors.length === 0 ? (
+                        <div className="no-doctors">
+                            <Icon icon="mdi:doctor" className="no-doctors-icon" />
+                            <p>No doctors registered yet.</p>
+                            <p className="no-doctors-subtitle">Doctors will appear here once they sign up with "Register as Doctor" option.</p>
+                        </div>
+                    ) : (
+                        <>
+                            <table className="doctors-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Name</th>
+                                        <th>Email</th>
+                                        <th>Specialization</th>
+                                        <th>Contact</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
 
-                        <tbody>
-                            {paginatedDoctors.map((doctor, index) => (
-                                <tr key={index}>
-                                    <td>{doctor.id}</td>
-                                    <td>{doctor.name}</td>
-                                    <td>{doctor.email || "No email"}</td>
-                                    <td>{doctor.specialization || "Not specified"}</td>
-                                    <td>{doctor.contact || "No contact"}</td>
-                                    <td>
-                                        <div className="action-buttons">
-                                            <button
-                                                className="btn-edit"
-                                                onClick={() => handleEdit(index + firstIndex)}
-                                                title="Edit Doctor"
-                                            >
-                                                <Icon icon="nimbus:edit" width="16" height="16" />
-                                            </button>
+                                <tbody>
+                                    {paginatedDoctors.map((doctor, index) => (
+                                        <tr key={doctor.id || index}>
+                                            <td>{doctor.id}</td>
+                                            <td>{doctor.user_name || doctor.name || "N/A"}</td>
+                                            <td>{doctor.user_email || doctor.email || "No email"}</td>
+                                            <td>{doctor.specialization || "Not specified"}</td>
+                                            <td>{doctor.contact || "No contact"}</td>
+                                            <td>
+                                                <div className="action-buttons">
+                                                    <button
+                                                        className="btn-edit"
+                                                        onClick={() => handleEdit(index)}
+                                                        title="Edit Doctor"
+                                                    >
+                                                        <Icon icon="nimbus:edit" width="16" height="16" />
+                                                    </button>
 
-                                            <button
-                                                className="btn-delete"
-                                                onClick={() => handleDelete(index + firstIndex)}
-                                                title="Delete Doctor"
-                                            >
-                                                <Icon icon="weui:delete-on-filled" width="22" height="22" />
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                                                    <button
+                                                        className="btn-delete"
+                                                        onClick={() => handleDelete(index)}
+                                                        title="Delete Doctor"
+                                                    >
+                                                        <Icon icon="weui:delete-on-filled" width="22" height="22" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
 
-                    {/* PAGINATION */}
-                    <Pagination
-                        currentPage={currentPage}
-                        totalPages={totalPages}
-                        onPrev={() => handleNavigation("prev")}
-                        onNext={() => handleNavigation("next")}
-                    />
+                            {/* PAGINATION */}
+                            <Pagination
+                                currentPage={currentPage}
+                                totalPages={totalPages}
+                                onPrev={() => handleNavigation("prev")}
+                                onNext={() => handleNavigation("next")}
+                            />
+                        </>
+                    )}
                 </>
             )}
 
@@ -283,13 +287,18 @@ export default function Doctors() {
 
                         <form onSubmit={handleSave} className="doctor-form">
                             {editIndex === null && (
+                                <div style={{ padding: "1rem", backgroundColor: "#f0f0f0", borderRadius: "4px", marginBottom: "1rem" }}>
+                                    <p><strong>Note:</strong> New doctors must register via the Sign Up page with "Register as Doctor" option.</p>
+                                </div>
+                            )}
+
+                            {editIndex !== null && (
                                 <label>
-                                    Doctor ID (Optional - auto-generated if empty):
+                                    Doctor ID (Read-only):
                                     <input
                                         type="text"
                                         value={doctorId}
-                                        onChange={(e) => setDoctorId(e.target.value)}
-                                        placeholder="Auto-generated"
+                                        disabled
                                     />
                                 </label>
                             )}
@@ -316,30 +325,28 @@ export default function Doctors() {
                             </label>
 
                             <label>
-                                Specialization:*
+                                Specialization:
                                 <input
                                     type="text"
                                     value={specialization}
                                     onChange={(e) => setSpecialization(e.target.value)}
-                                    required
                                     placeholder="e.g., Cardiology"
                                 />
                             </label>
 
                             <label>
-                                Contact Number:*
+                                Contact Number:
                                 <input
                                     type="text"
                                     value={contact}
                                     onChange={(e) => setContact(e.target.value)}
-                                    required
                                     placeholder="e.g., 0312-3456789"
                                 />
                             </label>
 
                             <div className="modal-buttons">
                                 <button type="submit" className="save-btn">
-                                    {editIndex !== null ? "Update Doctor" : "Add Doctor"}
+                                    {editIndex !== null ? "Update Doctor" : "Close"}
                                 </button>
                                 <button type="button" className="cancel-btn" onClick={resetForm}>
                                     Cancel

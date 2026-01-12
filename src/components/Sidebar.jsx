@@ -3,14 +3,21 @@ import { NavLink, useNavigate } from "react-router-dom";
 
 export default function Sidebar() {
     const navigate = useNavigate();
-    const appData = JSON.parse(localStorage.getItem("appData")) || {};
-    const user = appData.currentUser;
+
+    const getCurrentUser = () => {
+        try {
+            const stored = localStorage.getItem("currentUser");
+            return stored ? JSON.parse(stored) : null;
+        } catch (err) {
+            return null;
+        }
+    };
+
+    const user = getCurrentUser();
 
     const handleLogout = () => {
-        localStorage.setItem(
-            "appData",
-            JSON.stringify({ ...appData, currentUser: null })
-        );
+        localStorage.removeItem("token");
+        localStorage.removeItem("currentUser");
         navigate("/login", { replace: true });
     };
 
@@ -18,7 +25,7 @@ export default function Sidebar() {
         return null;
     }
 
-    const isDoctor = user.isDoctor === true || user.isDoctor === "1";
+    const isDoctor = user.role_ID === 1 || user.isDoctor === true || user.isDoctor === "1";
 
     return (
         <aside className="sidebar">

@@ -12,7 +12,7 @@ export default function Signup() {
         name: "",
         email: "",
         password: "",
-        isDoctor: false
+        role_ID: 2
     });
 
     const [loading, setLoading] = useState(false);
@@ -28,12 +28,14 @@ export default function Signup() {
     const handleSignup = async (e) => {
         e.preventDefault();
 
-        const { name, email, password, isDoctor } = formData;
+        const { name, email, password, role_ID } = formData;
 
+        // Validation
         if (!name || !email || !password) {
             toast.error("All fields are required");
             return;
         }
+
 
         try {
             setLoading(true);
@@ -47,28 +49,42 @@ export default function Signup() {
                     name,
                     email,
                     password,
-                    isDoctor
+                    rid: role_ID || 2
                 })
             });
 
             const data = await response.json();
 
             if (!response.ok) {
-                throw new Error(data.message || "Signup failed");
+                // Handle specific errors
+                if (response.status === 401) {
+                    throw new Error("Registration is currently disabled. Please contact an administrator.");
+                }
+                if (response.status === 422 && data.errors) {
+                    const errorMsg = data.errors.map(err => err.msg).join(", ");
+                    throw new Error(errorMsg);
+                }
+                throw new Error(data.message || data.alert || "Signup failed");
             }
 
-            toast.success("Signup successful! Please login.");
-            navigate("/login", { replace: true });
+            toast.success("Signup successful! Redirecting to login...");
 
+            // Clear form and redirect
             setFormData({
                 name: "",
                 email: "",
                 password: "",
-                isDoctor: false
+                role_ID: 2
             });
 
+            // Redirect to login after short delay
+            setTimeout(() => {
+                navigate("/login", { replace: true });
+            }, 1500);
+
         } catch (error) {
-            toast.error(error.message);
+            console.error("Signup error:", error);
+            toast.error(error.message || "Signup failed. Please try again.");
         } finally {
             setLoading(false);
         }
@@ -82,7 +98,7 @@ export default function Signup() {
                 <MyInput
                     type="text"
                     name="name"
-                    placeholder="Full Name"
+                    placeholder="Full Name (letters only, no spaces)"
                     value={formData.name}
                     onChange={handleInputChange}
                     required
@@ -111,8 +127,10 @@ export default function Signup() {
                         <input
                             type="checkbox"
                             name="isDoctor"
-                            checked={formData.isDoctor}
-                            onChange={handleInputChange}
+                            checked={formData.role_ID === 1}
+                            onChange={(e) =>
+                                setFormData((prev) => ({ ...prev, role_ID: e.target.checked ? 1 : 2 }))
+                            }
                         />
                         <span>Register as Doctor</span>
                     </label>

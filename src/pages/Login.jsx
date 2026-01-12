@@ -50,23 +50,54 @@ export default function Login() {
                 throw new Error(data.message || "Login failed");
             }
 
-            // Store auth data
+            // Store token
             localStorage.setItem("token", data.token);
-            localStorage.setItem("currentUser", JSON.stringify(data.user));
+
+            // Decode JWT payload to extract user info (don't store password)
+            const decodeToken = (token) => {
+                try {
+                    const payload = token.split('.')[1];
+                    let base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+                    while (base64.length % 4) base64 += '=';
+                    const jsonPayload = atob(base64);
+                    return JSON.parse(jsonPayload);
+                } catch (err) {
+                    console.error('Failed to decode token', err);
+                    return null;
+                }
+            };
+
+            const payload = decodeToken(data.token);
+            const userFromToken = payload
+                ? {
+                    id: payload.id ?? payload.user_id ?? payload.userId,
+                    role_ID: payload.role_id ?? payload.role_ID ?? payload.roleId,
+                    email: payload.email
+                }
+                : null;
+
+            if (userFromToken) {
+                localStorage.setItem("currentUser", JSON.stringify(userFromToken));
+            }
 
             toast.success("Login successful");
 
-            setFormData({
-                email: "",
-                password: ""
-            });
+            setFormData({ email: "", password: "" });
 
-            // Redirect based on role
-            if (data.user.isDoctor) {
+            // Redirect based on role (mapped from token)
+            const role = userFromToken?.role_ID;
+            if (role === 1) {
                 navigate("/doctor-dashboard", { replace: true });
-            } else {
+            } else if (role === 2) {
                 navigate("/", { replace: true });
+            } else {
+                toast.error("Invalid user role");
             }
+            // if (data.user.role_ID === 2) { // Assuming 2 is the role ID for doctors
+            //     navigate("/doctor-dashboard", { replace: true });
+            // } else {
+            //     navigate("/", { replace: true });
+            // }
 
         } catch (error) {
             toast.error(error.message);
