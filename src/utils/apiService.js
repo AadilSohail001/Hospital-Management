@@ -18,6 +18,7 @@ const getAuthHeaders = () => ({
  * Fetch all users from database
  * @returns {Promise<Array>} Array of users with all fields
  */
+
 export const fetchAllUsers = async () => {
     try {
         const response = await fetch(`${API_BASE_URL}/users/show-all`, {
