@@ -1,17 +1,52 @@
 import React, { useState, useEffect } from "react";
 import { Icon } from "@iconify/react";
+import { toast } from "react-toastify";
 
-import { getLocalStorageData } from "../utils/functions";
 import Pagination from "../components/Pagination";
 
 import "../styles/Patients.css";
 
+const API_BASE_URL = "http://localhost:8080/hospital";
+
 export default function Patients() {
-    // Load Patients safely
-    const [patients, setPatients] = useState(() => {
-        const data = getLocalStorageData("patients");
-        return Array.isArray(data) ? data : [];
-    });
+    const [patients, setPatients] = useState([]);
+    // eslint-disable-next-line no-unused-vars
+    const [loading, setLoading] = useState(true);
+
+    // Load patients from backend
+    const loadPatients = async () => {
+        setLoading(true);
+        try {
+            const token = localStorage.getItem("token");
+            const response = await fetch(`${API_BASE_URL}/patients/show-patients`, {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                const patientsList = Array.isArray(data) ? data : [];
+                setPatients(patientsList);
+            } else {
+                console.error("Failed to fetch patients");
+                setPatients([]);
+                toast.error("Failed to load patients");
+            }
+        } catch (error) {
+            console.error("Error fetching patients:", error);
+            setPatients([]);
+            toast.error("Error loading patients");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        loadPatients();
+    }, []);
 
     // PAGINATION
     const [currentPage, setCurrentPage] = useState(1);
@@ -32,32 +67,83 @@ export default function Patients() {
     const [condition, setCondition] = useState("");
     const [contact, setContact] = useState("");
 
-    // Sync patients to localStorage
-    useEffect(() => {
-        localStorage.setItem("patients", JSON.stringify(patients));
-    }, [patients]);
-
     // ADD / EDIT
-    function handleSave(e) {
+    async function handleSave(e) {
         e.preventDefault();
 
-        const newPatient = {
-            id: patientId,
-            name: patientName,
-            condition,
-            contact
-        };
-
-        if (editIndex !== null) {
-            const updated = [...patients];
-            updated[editIndex] = newPatient;
-            setPatients(updated);
-            setEditIndex(null);
-        } else {
-            setPatients([...patients, newPatient]);
+        if (!patientName.trim()) {
+            toast.error("Patient name is required");
+            return;
         }
 
-        resetForm();
+        if (!condition.trim()) {
+            toast.error("Condition is required");
+            return;
+        }
+
+        if (!contact) {
+            toast.error("Contact is required");
+            return;
+        }
+
+        try {
+            if (editIndex !== null) {
+                // Update existing patient
+                const updateData = {
+                    p_name: patientName,
+                    p_condition: condition,
+                    p_contact: parseInt(contact)
+                };
+
+                const token = localStorage.getItem("token");
+                const response = await fetch(`${API_BASE_URL}/patients/update-patient/${patientId}`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`
+                    },
+                    body: JSON.stringify(updateData)
+                });
+
+                if (response.ok) {
+                    await loadPatients();
+                    toast.success("Patient updated successfully!");
+                    resetForm();
+                } else {
+                    const errorData = await response.json();
+                    toast.error(errorData.message || "Failed to update patient");
+                }
+            } else {
+                // Add new patient
+                const newPatientData = {
+                    p_name: patientName,
+                    p_condition: condition,
+                    p_contact: parseInt(contact)
+                };
+
+                const token = localStorage.getItem("token");
+                const response = await fetch(`${API_BASE_URL}/patients/register-patient`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`
+                    },
+                    body: JSON.stringify(newPatientData)
+                });
+
+                if (response.ok) {
+                    await loadPatients();
+                    toast.success("Patient added successfully!");
+                    resetForm();
+                } else {
+                    const errorData = await response.json();
+                    toast.error(errorData.message || "Failed to add patient");
+                }
+            }
+        } catch (error) {
+            console.error("Error saving patient:", error);
+            toast.error("Error saving patient");
+        }
     }
 
     function resetForm() {
@@ -70,17 +156,44 @@ export default function Patients() {
     }
 
     function handleEdit(index) {
-        const p = patients[index];
+        const p = paginatedPatients[index];
         setPatientId(p.id);
-        setPatientName(p.name);
+        setPatientName(p.patient_name);
         setCondition(p.condition);
-        setContact(p.contact);
-        setEditIndex(index);
+        setContact(p.contact || "");
+        setEditIndex(index + firstIndex);
         setShowModal(true);
     }
 
-    function handleDelete(index) {
-        setPatients(patients.filter((_, i) => i !== index));
+    async function handleDelete(index) {
+        if (window.confirm("Are you sure you want to delete this patient?")) {
+            const p = paginatedPatients[index];
+
+            try {
+                const token = localStorage.getItem("token");
+                const response = await fetch(`${API_BASE_URL}/patients/delete-patient/${p.id}`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    await loadPatients();
+                    toast.success("Patient deleted successfully!");
+
+                    if (paginatedPatients.length === 1 && currentPage > 1) {
+                        setCurrentPage(prev => Math.max(1, prev - 1));
+                    }
+                } else {
+                    toast.error("Failed to delete patient");
+                }
+            } catch (error) {
+                console.error("Error deleting patient:", error);
+                toast.error("Error deleting patient");
+            }
+        }
     }
 
     const handleNavigation = (direction) => {
@@ -122,20 +235,20 @@ export default function Patients() {
                             paginatedPatients.map((p, i) => (
                                 <tr key={i}>
                                     <td>{p.id}</td>
-                                    <td>{p.name}</td>
+                                    <td>{p.patient_name}</td>
                                     <td>{p.condition}</td>
                                     <td>{p.contact}</td>
                                     <td>
                                         <div className="action-buttons">
                                             <button
                                                 className="btn-edit"
-                                                onClick={() => handleEdit(i + firstIndex)}
+                                                onClick={() => handleEdit(i)}
                                             >
                                                 <Icon icon="mdi:account-edit" width="20" />
                                             </button>
                                             <button
                                                 className="btn-delete"
-                                                onClick={() => handleDelete(i + firstIndex)}
+                                                onClick={() => handleDelete(i)}
                                             >
                                                 <Icon icon="mdi:trash" width="20" />
                                             </button>
@@ -163,17 +276,11 @@ export default function Patients() {
 
                         <form className="modal-form" onSubmit={handleSave}>
                             <input
-                                placeholder="Patient ID"
-                                required
-                                value={patientId}
-                                onChange={e => setPatientId(e.target.value)}
-                            />
-
-                            <input
                                 placeholder="Patient Name"
                                 required
                                 value={patientName}
                                 onChange={e => setPatientName(e.target.value)}
+                                autoFocus
                             />
 
                             <input

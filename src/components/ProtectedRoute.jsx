@@ -22,6 +22,7 @@ export default function ProtectedRoute({ children, allowedRoles }) {
     try {
         const storedUser = localStorage.getItem("currentUser");
         user = storedUser ? JSON.parse(storedUser) : null;
+        // eslint-disable-next-line no-unused-vars
     } catch (error) {
         console.error("Invalid user data in localStorage");
         user = null;

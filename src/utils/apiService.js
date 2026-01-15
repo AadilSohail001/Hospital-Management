@@ -1,39 +1,51 @@
-/**
- * API Service for CRUD operations with the backend
- * Handles all database operations and returns fresh data
- */
+import axios from 'axios';
 
 const API_BASE_URL = "http://localhost:8080/hospital";
 
-// Helper to get JWT token
-const getToken = () => localStorage.getItem("token");
-
-// Helper to get auth headers
-const getAuthHeaders = () => ({
-    "Content-Type": "application/json",
-    "Authorization": `Bearer ${getToken()}`
+// Create axios instance with base configuration
+const api = axios.create({
+    baseURL: API_BASE_URL,
+    headers: {
+        "Content-Type": "application/json"
+    }
 });
+
+// Add request interceptor to attach token
+api.interceptors.request.use(
+    config => {
+        const token = localStorage.getItem("token");
+        if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+    },
+    error => Promise.reject(error)
+);
+
+// Add response interceptor for error handling
+api.interceptors.response.use(
+    response => response,
+    error => {
+        if (error.response?.status === 401) {
+            // Token expired or invalid - user should re-login
+            localStorage.removeItem("token");
+            localStorage.removeItem("currentUser");
+            window.location.href = "/login";
+        }
+        return Promise.reject(error);
+    }
+);
 
 /**
  * Fetch all users from database
  * @returns {Promise<Array>} Array of users with all fields
  */
-
 export const fetchAllUsers = async () => {
     try {
-        const response = await fetch(`${API_BASE_URL}/users/show-all`, {
-            method: "GET",
-            headers: getAuthHeaders()
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to fetch users: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        return data.users || data.data || data || [];
+        const response = await api.get("/users/show-all");
+        return response.data.users || response.data.data || response.data || [];
     } catch (error) {
-        console.error("Error fetching users:", error);
+        console.error("Error fetching users:", error.response?.data || error.message);
         throw error;
     }
 };
@@ -47,7 +59,7 @@ export const fetchAllDoctors = async () => {
         const allUsers = await fetchAllUsers();
         return allUsers.filter(user => user.role === "doctor" || user.role === "Doctor");
     } catch (error) {
-        console.error("Error fetching doctors:", error);
+        console.error("Error fetching doctors:", error.response?.data || error.message);
         throw error;
     }
 };
@@ -68,7 +80,7 @@ export const fetchRegularUsers = async () => {
             user.user_Id !== currentUserId // Not the current logged-in user
         );
     } catch (error) {
-        console.error("Error fetching regular users:", error);
+        console.error("Error fetching regular users:", error.response?.data || error.message);
         throw error;
     }
 };
@@ -85,21 +97,10 @@ export const updateUser = async (userId, updateData) => {
             throw new Error("User ID is required");
         }
 
-        const response = await fetch(`${API_BASE_URL}/users/update-user/${userId}`, {
-            method: "POST",
-            headers: getAuthHeaders(),
-            body: JSON.stringify(updateData)
-        });
-
-        const responseData = await response.json();
-
-        if (!response.ok) {
-            throw new Error(responseData.alert || responseData.message || "Update failed");
-        }
-
-        return responseData;
+        const response = await api.post(`/users/update-user/${userId}`, updateData);
+        return response.data;
     } catch (error) {
-        console.error("Error updating user:", error);
+        console.error("Error updating user:", error.response?.data || error.message);
         throw error;
     }
 };
@@ -115,48 +116,94 @@ export const deleteUser = async (userId) => {
             throw new Error("User ID is required");
         }
 
-        const response = await fetch(`${API_BASE_URL}/users/delete-user/${userId}`, {
-            method: "POST",
-            headers: getAuthHeaders()
-        });
-
-        const responseData = await response.json();
-
-        if (!response.ok) {
-            throw new Error(responseData.message || "Delete failed");
-        }
-
-        return responseData;
+        const response = await api.post(`/users/delete-user/${userId}`);
+        return response.data;
     } catch (error) {
-        console.error("Error deleting user:", error);
+        console.error("Error deleting user:", error.response?.data || error.message);
         throw error;
     }
 };
 
 /**
  * Create a new user (register)
- * NOTE: Backend register route requires authorization. 
- * Only admins/authenticated users can create new users.
+ * NOTE: Backend register route may require authorization depending on configuration.
  * @param {Object} userData - User data (name, email, password, rid)
  * @returns {Promise<Object>} Response from backend
  */
 export const createUser = async (userData) => {
     try {
-        const response = await fetch(`${API_BASE_URL}/users/register`, {
-            method: "POST",
-            headers: getAuthHeaders(),
-            body: JSON.stringify(userData)
-        });
+        const response = await api.post(`/users/register`, userData);
+        return response.data;
+    } catch (error) {
+        console.error("Error creating user:", error.response?.data || error.message);
+        throw error;
+    }
+};
 
-        const responseData = await response.json();
+/**
+ * Fetch all patients from database
+ * @returns {Promise<Array>} Array of patients
+ */
+export const fetchAllPatients = async () => {
+    try {
+        const response = await api.get("/patients/show-patients");
+        return Array.isArray(response.data) ? response.data : response.data.patients || [];
+    } catch (error) {
+        console.error("Error fetching patients:", error.response?.data || error.message);
+        throw error;
+    }
+};
 
-        if (!response.ok) {
-            throw new Error(responseData.message || "Registration failed");
+/**
+ * Create a new patient
+ * @param {Object} patientData - Patient data (p_name, p_condition, p_contact)
+ * @returns {Promise<Object>} Response from backend
+ */
+export const createPatient = async (patientData) => {
+    try {
+        const response = await api.post(`/patients/register-patient`, patientData);
+        return response.data;
+    } catch (error) {
+        console.error("Error creating patient:", error.response?.data || error.message);
+        throw error;
+    }
+};
+
+/**
+ * Update a patient in the database
+ * @param {number} patientId - Patient ID to update
+ * @param {Object} updateData - Data to update (p_name, p_condition, p_contact)
+ * @returns {Promise<Object>} Response from backend
+ */
+export const updatePatient = async (patientId, updateData) => {
+    try {
+        if (!patientId) {
+            throw new Error("Patient ID is required");
         }
 
-        return responseData;
+        const response = await api.post(`/patients/update-patient/${patientId}`, updateData);
+        return response.data;
     } catch (error) {
-        console.error("Error creating user:", error);
+        console.error("Error updating patient:", error.response?.data || error.message);
+        throw error;
+    }
+};
+
+/**
+ * Delete a patient from the database
+ * @param {number} patientId - Patient ID to delete
+ * @returns {Promise<Object>} Response from backend
+ */
+export const deletePatient = async (patientId) => {
+    try {
+        if (!patientId) {
+            throw new Error("Patient ID is required");
+        }
+
+        const response = await api.post(`/patients/delete-patient/${patientId}`);
+        return response.data;
+    } catch (error) {
+        console.error("Error deleting patient:", error.response?.data || error.message);
         throw error;
     }
 };
@@ -167,5 +214,9 @@ export default {
     fetchRegularUsers,
     updateUser,
     deleteUser,
-    createUser
+    createUser,
+    fetchAllPatients,
+    createPatient,
+    updatePatient,
+    deletePatient
 };

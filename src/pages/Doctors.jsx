@@ -16,7 +16,7 @@ export default function Doctors() {
             setLoading(true);
             try {
                 const token = localStorage.getItem("token");
-                const response = await fetch(`${API_BASE_URL}/users/show-all`, {
+                const response = await fetch(`${API_BASE_URL}/users/show-all-doctors`, {
                     method: "GET",
                     headers: {
                         "Content-Type": "application/json",
@@ -26,11 +26,11 @@ export default function Doctors() {
 
                 if (response.ok) {
                     const data = await response.json();
-                    const allUsers = data.users || data.data || data || [];
-                    const doctorsList = Array.isArray(allUsers)
-                        ? allUsers.filter(user => user.role === "doctor" || user.role === "Doctor")
-                        : [];
+                    const allUsers = Array.isArray(data) ? data : data.users || [];
+                    // Filter only doctors (where role = 'doctor')
+                    const doctorsList = allUsers.filter(user => user.role && (user.role === "doctor" || user.role === "Doctor"));
                     setDoctors(doctorsList);
+
                 } else {
                     console.error("Failed to fetch doctors");
                     setDoctors([]);
@@ -78,9 +78,10 @@ export default function Doctors() {
             // Update existing doctor via API
             const updateData = {
                 name: doctorName,
-                email: email
+                email: email,
+                specialization: specialization,
+                contact: contact
             };
-
 
             try {
                 const token = localStorage.getItem("token");
@@ -124,11 +125,11 @@ export default function Doctors() {
     function handleEdit(index) {
         const actualIndex = index + firstIndex;
         const d = doctors[actualIndex];
-        setDoctorId(d.user_Id || d.id);
-        setDoctorName(d.user_name || d.name || "");
+        setDoctorId(d.user_Id);
+        setDoctorName(d.user_name || "");
         setSpecialization(d.specialization || "");
         setContact(d.contact || "");
-        setEmail(d.user_email || d.email || "");
+        setEmail(d.user_email || "");
         setEditIndex(actualIndex);
         setShowModal(true);
     }
@@ -149,8 +150,32 @@ export default function Doctors() {
                 });
 
                 if (response.ok) {
-                    const updatedDoctors = doctors.filter((_, i) => i !== actualIndex);
-                    setDoctors(updatedDoctors);
+                    // Reload doctors list after delete
+                    setLoading(true);
+                    try {
+                        const reloadToken = localStorage.getItem("token");
+                        const reloadResponse = await fetch(`${API_BASE_URL}/users/show-all-doctors`, {
+                            method: "GET",
+                            headers: {
+                                "Content-Type": "application/json",
+                                "Authorization": `Bearer ${reloadToken}`
+                            }
+                        });
+                        // Update local state immediately
+                        setDoctors(prev => prev.filter(doc => doc.user_Id !== doctorToDelete.user_Id));
+
+                        if (reloadResponse.ok) {
+                            const data = await reloadResponse.json();
+                            const allUsers = Array.isArray(data) ? data : data.users || [];
+                            const doctorsList = allUsers.filter(user => user.role && (user.role === "doctor" || user.role === "Doctor"));
+                            setDoctors(doctorsList);
+                        }
+                    } catch (error) {
+                        console.error("Error reloading doctors:", error);
+                    } finally {
+                        setLoading(false);
+                    }
+
                     toast.success("Doctor deleted successfully!");
 
                     // Reset to first page if current page has no doctors
@@ -219,9 +244,10 @@ export default function Doctors() {
                                 </thead>
 
                                 <tbody>
+
                                     {paginatedDoctors.map((doctor, index) => (
-                                        <tr key={doctor.id || index}>
-                                            <td>{doctor.id}</td>
+                                        <tr key={doctor.user_Id || index}>
+                                            <td>{doctor.user_Id}</td>
                                             <td>{doctor.user_name || doctor.name || "N/A"}</td>
                                             <td>{doctor.user_email || doctor.email || "No email"}</td>
                                             <td>{doctor.specialization || "Not specified"}</td>
@@ -249,6 +275,7 @@ export default function Doctors() {
                                     ))}
                                 </tbody>
                             </table>
+
 
                             {/* PAGINATION */}
                             <Pagination
@@ -287,7 +314,7 @@ export default function Doctors() {
                             )}
 
                             <label>
-                                Doctor Name:*
+                                Doctor Name:
                                 <input
                                     type="text"
                                     value={doctorName}
@@ -297,7 +324,7 @@ export default function Doctors() {
                             </label>
 
                             <label>
-                                Email:*
+                                Email:
                                 <input
                                     type="email"
                                     value={email}
