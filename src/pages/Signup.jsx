@@ -30,46 +30,46 @@ export default function Signup() {
 
         const { name, email, password, role_ID } = formData;
 
-        // Validation
         if (!name || !email || !password) {
             toast.error("All fields are required");
             return;
         }
 
+        const token = localStorage.getItem("token");
+
+        if (!token) {
+            toast.error("You are not authorized to perform this action.");
+            return;
+        }
 
         try {
             setLoading(true);
 
-            const response = await fetch("http://localhost:8080/hospital/users/register", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    name,
-                    email,
-                    password,
-                    rid: role_ID || 2
-                })
-            });
+            const response = await fetch(
+                "http://localhost:8080/hospital/users/register",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${localStorage.getItem("token")}`
+                    },
+                    body: JSON.stringify({
+                        name,
+                        email,
+                        password,
+                        rid: role_ID || 2
+                    })
+                }
+            );
 
             const data = await response.json();
 
             if (!response.ok) {
-                // Handle specific errors
-                if (response.status === 401) {
-                    throw new Error("Registration is currently disabled. Please contact an administrator.");
-                }
-                if (response.status === 422 && data.errors) {
-                    const errorMsg = data.errors.map(err => err.msg).join(", ");
-                    throw new Error(errorMsg);
-                }
-                throw new Error(data.message || data.alert || "Signup failed");
+                throw new Error(data.message || "Signup failed");
             }
 
-            toast.success("Signup successful! Redirecting to login...");
+            toast.success("User registered successfully");
 
-            // Clear form and redirect
             setFormData({
                 name: "",
                 email: "",
@@ -77,18 +77,16 @@ export default function Signup() {
                 role_ID: 2
             });
 
-            // Redirect to login after short delay
-            setTimeout(() => {
-                navigate("/login", { replace: true });
-            }, 1500);
+            navigate("/"); // or wherever admin goes next
 
         } catch (error) {
             console.error("Signup error:", error);
-            toast.error(error.message || "Signup failed. Please try again.");
+            toast.error(error.message || "Signup failed");
         } finally {
             setLoading(false);
         }
     };
+
 
     return (
         <div className="signup-container">

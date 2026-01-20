@@ -50,7 +50,7 @@ export default function Patients() {
 
     // PAGINATION
     const [currentPage, setCurrentPage] = useState(1);
-    const recordsPerPage = 3;
+    const recordsPerPage = 5;
 
     const lastIndex = currentPage * recordsPerPage;
     const firstIndex = lastIndex - recordsPerPage;

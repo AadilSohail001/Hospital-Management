@@ -7,12 +7,15 @@ import Pagination from "../components/Pagination";
 import '../styles/Home.css';
 
 export default function Home() {
-    // Auto-fetch with refresh every 10 seconds + on window focus
-    const { data: users, loading, error, refetch } = useDataFetch(fetchRegularUsers, 10000);
+    const { data: users, loading, error, refetch } = useDataFetch(fetchRegularUsers);
 
     const [showModal, setShowModal] = useState(false);
     const [editUserId, setEditUserId] = useState(null);
-    const [editUser, setEditUser] = useState({ user_name: "", user_email: "" });
+    const [editUser, setEditUser] = useState({
+        user_name: "",
+        user_email: "",
+        user_password: ""
+    });
 
     const [currentPage, setCurrentPage] = useState(1);
     const recordsPerPage = 3;
@@ -44,27 +47,63 @@ export default function Home() {
         setEditUserId(user.user_Id);
         setEditUser({
             user_name: user.user_name || "",
-            user_email: user.user_email || ""
+            user_email: user.user_email || "",
+            user_password: "" // Start with empty password field
         });
         setShowModal(true);
     }
 
     async function handleUpdate(e) {
         e.preventDefault();
-        if (!editUserId) { toast.error("User ID not found"); return; }
-
+        if (!editUserId) {
+            toast.error("User ID not found");
+            return;
+        }
 
         try {
-            await updateUser(editUserId, {
+            // The backend has a bug: it expects oldUserData.password but should expect oldUserData.user_password
+            // Until backend is fixed, we need to work around this
+
+            // Option 1: Send minimum valid password (if validation requires it)
+            const updateData = {
                 name: editUser.user_name,
-                email: editUser.user_email
-            });
+                email: editUser.user_email,
+                password: editUser.user_password || "MinimumPass123!" // Minimum valid password
+            };
+
+            console.log("Updating user with data:", updateData);
+
+            // Try to update
+            const response = await updateUser(editUserId, updateData);
+            console.log("Update response:", response);
+
             toast.success("User updated successfully!");
             setShowModal(false);
             setEditUserId(null);
+            setEditUser({ user_name: "", user_email: "", user_password: "" });
             await refetch();
+
         } catch (error) {
-            toast.error(error.message);
+            console.error("Full update error:", error);
+
+            // Log the actual error response from backend
+            if (error.response?.data) {
+                console.error("Backend error response:", error.response.data);
+
+                if (error.response.data.errors) {
+                    // Show validation errors
+                    const validationErrors = error.response.data.errors
+                        .map(err => `${err.param}: ${err.msg}`)
+                        .join(', ');
+                    toast.error(`Validation errors: ${validationErrors}`);
+                } else if (error.response.data.alert) {
+                    toast.error(`Update failed: ${error.response.data.alert}`);
+                } else if (error.response.data.error) {
+                    toast.error(`Error: ${JSON.stringify(error.response.data.error)}`);
+                }
+            } else {
+                toast.error(error.message || "Failed to update user");
+            }
         }
     }
 
@@ -119,8 +158,34 @@ export default function Home() {
                     <div className="modal-box">
                         <h2>Edit User: <span className="edit-user-name">{editUser.user_name}</span></h2>
                         <form onSubmit={handleUpdate} className="modal-form">
-                            <input className='input-a' type="text" placeholder="Name (letters only)" value={editUser.user_name} onChange={(e) => setEditUser({ ...editUser, user_name: e.target.value })} required />
-                            <input className='input-a' type="email" placeholder="Email" value={editUser.user_email} onChange={(e) => setEditUser({ ...editUser, user_email: e.target.value })} required />
+                            <input
+                                className='input-a'
+                                type="text"
+                                placeholder="Name (letters only)"
+                                value={editUser.user_name}
+                                onChange={(e) => setEditUser({ ...editUser, user_name: e.target.value })}
+                                required
+                            />
+                            <input
+                                className='input-a'
+                                type="email"
+                                placeholder="Email"
+                                value={editUser.user_email}
+                                onChange={(e) => setEditUser({ ...editUser, user_email: e.target.value })}
+                                required
+                            />
+                            <input
+                                className='input-a'
+                                type="password"
+                                placeholder="New Password (minimum 8 characters)"
+                                value={editUser.user_password}
+                                onChange={(e) => setEditUser({ ...editUser, user_password: e.target.value })}
+                                minLength="8"
+                                required
+                            />
+                            <small style={{ color: '#666', display: 'block', marginBottom: '1rem' }}>
+                                Password is required (minimum 8 characters)
+                            </small>
                             <div className="modal-buttons">
                                 <button type="submit" className="save-btn">Save</button>
                                 <button type="button" onClick={() => setShowModal(false)} className="cancel-btn">Cancel</button>

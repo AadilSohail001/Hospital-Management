@@ -10,13 +10,17 @@ export default function Doctors() {
     // Load Doctors - from backend API
     const [doctors, setDoctors] = useState([]);
     const [loading, setLoading] = useState(true);
+    // Add state for specializations from backend
+    const [specializations, setSpecializations] = useState([]);
 
     useEffect(() => {
-        const loadDoctors = async () => {
+        const loadData = async () => {
             setLoading(true);
             try {
                 const token = localStorage.getItem("token");
-                const response = await fetch(`${API_BASE_URL}/users/show-all-doctors`, {
+
+                // Load specializations first
+                const specsResponse = await fetch(`${API_BASE_URL}/users/get-doctor-specialities`, {
                     method: "GET",
                     headers: {
                         "Content-Type": "application/json",
@@ -24,31 +28,85 @@ export default function Doctors() {
                     }
                 });
 
-                if (response.ok) {
-                    const data = await response.json();
-                    const allUsers = Array.isArray(data) ? data : data.users || [];
-                    // Filter only doctors (where role = 'doctor')
-                    const doctorsList = allUsers.filter(user => user.role && (user.role === "doctor" || user.role === "Doctor"));
-                    setDoctors(doctorsList);
+                if (specsResponse.ok) {
+                    const specsData = await specsResponse.json();
+                    if (Array.isArray(specsData)) {
+                        setSpecializations(specsData);
+                    }
+                }
 
+                // Load doctors
+                const doctorsResponse = await fetch(`${API_BASE_URL}/users/show-all-doctors`, {
+                    method: "GET",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`
+                    }
+                });
+
+                if (doctorsResponse.ok) {
+                    const doctorsData = await doctorsResponse.json();
+
+                    // DEBUG: Log what the API returns
+                    console.log("=== DEBUG: API RESPONSE ===");
+                    console.log("Full response:", doctorsData);
+
+                    const allUsers = Array.isArray(doctorsData) ? doctorsData : doctorsData.users || [];
+
+                    // DEBUG: Log first user to see structure
+                    if (allUsers.length > 0) {
+                        console.log("First user object:", allUsers[0]);
+                        console.log("Keys in first user:", Object.keys(allUsers[0]));
+                    }
+
+                    // IMPORTANT: Check what field indicates a doctor
+                    // Based on your DB, it might be role_id = 1
+                    const doctorsList = allUsers.filter(user => {
+                        // Check for role_id = 1 (doctor)
+                        if (user.role_id === 1 || user.role_id === '1') {
+                            return true;
+                        }
+
+                        // Check for role field
+                        if (user.role) {
+                            const role = user.role.toString().toLowerCase();
+                            return role.includes('doctor') || role === '1';
+                        }
+
+                        // If no role field, check other possibilities
+                        if (user.user_type === 'doctor' || user.type === 'doctor') {
+                            return true;
+                        }
+
+                        return false;
+                    });
+
+                    console.log("=== DEBUG: FILTERING RESULTS ===");
+                    console.log("Total users from API:", allUsers.length);
+                    console.log("Filtered doctors:", doctorsList.length);
+                    console.log("Doctors list:", doctorsList);
+
+                    setDoctors(doctorsList);
                 } else {
                     console.error("Failed to fetch doctors");
                     setDoctors([]);
                 }
+
             } catch (error) {
-                console.error("Error fetching doctors:", error);
+                console.error("Error loading data:", error);
+                toast.error("Error loading data");
                 setDoctors([]);
             } finally {
                 setLoading(false);
             }
         };
 
-        loadDoctors();
+        loadData();
     }, []);
 
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
-    const recordsPerPage = 2;
+    const recordsPerPage = 5;
     const lastIndex = currentPage * recordsPerPage;
     const firstIndex = lastIndex - recordsPerPage;
     const paginatedDoctors = doctors.slice(firstIndex, lastIndex);
@@ -58,15 +116,10 @@ export default function Doctors() {
     const [editIndex, setEditIndex] = useState(null);
     const [doctorId, setDoctorId] = useState("");
     const [doctorName, setDoctorName] = useState("");
-    const [specialization, setSpecialization] = useState("");
+    const [specId, setSpecId] = useState("");
+    const [specializationName, setSpecializationName] = useState("");
     const [contact, setContact] = useState("");
     const [email, setEmail] = useState("");
-
-    // Validation helpers (match backend rules)
-
-
-    // Update both arrays when doctors change
-    // Removed - no longer needed since we fetch from backend
 
     // Save Form (Add or Update)
     async function handleSave(e) {
@@ -74,14 +127,24 @@ export default function Doctors() {
 
         const existingDoctor = editIndex !== null ? doctors[editIndex] : null;
 
-        if (editIndex !== null) {
-            // Update existing doctor via API
+        if (editIndex !== null && specId) {
+            const specIdNum = parseInt(specId);
+            const selectedSpec = specializations.find(spec => spec.id === specIdNum);
+
+            if (!selectedSpec) {
+                toast.error("Invalid specialization selected");
+                return;
+            }
+
+            // Use spz_ID to match backend
             const updateData = {
                 name: doctorName,
                 email: email,
-                specialization: specialization,
-                contact: contact
+                spz_ID: specIdNum,
+                contact: contact ? parseInt(contact) : 0
             };
+
+            console.log("Sending to backend:", updateData);
 
             try {
                 const token = localStorage.getItem("token");
@@ -95,40 +158,59 @@ export default function Doctors() {
                 });
 
                 if (response.ok) {
+                    const responseData = await response.json();
+                    console.log("Backend response:", responseData);
+
                     const updatedDoctors = [...doctors];
                     updatedDoctors[editIndex] = {
                         ...existingDoctor,
                         user_name: doctorName,
                         user_email: email,
-                        specialization: specialization,
+                        spec_ID: specIdNum,
+                        specialization: selectedSpec.speciality,
                         contact: contact
                     };
+
                     setDoctors(updatedDoctors);
-                    toast.success("Doctor updated successfully!");
+                    toast.success(`Doctor updated! Specialization: ${selectedSpec.speciality}`);
                     resetForm();
+
                 } else {
                     const errorData = await response.json();
-                    toast.error(errorData.alert || errorData.message || "Failed to update doctor");
-                    console.error("Update failed:", errorData);
+                    toast.error(errorData.message || "Failed to update doctor");
                 }
             } catch (error) {
-                console.error("Error updating doctor:", error);
-                toast.error("Error updating doctor");
+                console.error("Network error:", error);
+                toast.error("Network error");
             }
         } else {
-            // For adding new doctors, prompt user to use backend or return message
-            toast.info("New doctors must be registered via the Sign Up page with 'Register as Doctor' option.");
-            resetForm();
+            toast.error("Please select a specialization");
         }
     }
 
     function handleEdit(index) {
         const actualIndex = index + firstIndex;
         const d = doctors[actualIndex];
+
         setDoctorId(d.user_Id);
         setDoctorName(d.user_name || "");
-        setSpecialization(d.specialization || "");
-        setContact(d.contact || "");
+
+        let currentSpecId = "";
+        let currentSpecName = "";
+
+        if (d.spec_ID) {
+            currentSpecId = d.spec_ID.toString();
+            const specObj = specializations.find(spec => spec.id.toString() === currentSpecId);
+            currentSpecName = specObj ? specObj.speciality : "";
+        } else if (d.specialization) {
+            currentSpecName = d.specialization;
+            const specObj = specializations.find(spec => spec.speciality === d.specialization);
+            currentSpecId = specObj ? specObj.id.toString() : "";
+        }
+
+        setSpecId(currentSpecId);
+        setSpecializationName(currentSpecName);
+        setContact(d.contact ? d.contact.toString() : "");
         setEmail(d.user_email || "");
         setEditIndex(actualIndex);
         setShowModal(true);
@@ -150,40 +232,15 @@ export default function Doctors() {
                 });
 
                 if (response.ok) {
-                    // Reload doctors list after delete
-                    setLoading(true);
-                    try {
-                        const reloadToken = localStorage.getItem("token");
-                        const reloadResponse = await fetch(`${API_BASE_URL}/users/show-all-doctors`, {
-                            method: "GET",
-                            headers: {
-                                "Content-Type": "application/json",
-                                "Authorization": `Bearer ${reloadToken}`
-                            }
-                        });
-                        // Update local state immediately
-                        setDoctors(prev => prev.filter(doc => doc.user_Id !== doctorToDelete.user_Id));
-
-                        if (reloadResponse.ok) {
-                            const data = await reloadResponse.json();
-                            const allUsers = Array.isArray(data) ? data : data.users || [];
-                            const doctorsList = allUsers.filter(user => user.role && (user.role === "doctor" || user.role === "Doctor"));
-                            setDoctors(doctorsList);
-                        }
-                    } catch (error) {
-                        console.error("Error reloading doctors:", error);
-                    } finally {
-                        setLoading(false);
-                    }
-
+                    setDoctors(prev => prev.filter(doc => doc.user_Id !== doctorToDelete.user_Id));
                     toast.success("Doctor deleted successfully!");
 
-                    // Reset to first page if current page has no doctors
                     if (paginatedDoctors.length === 1 && currentPage > 1) {
                         setCurrentPage(prev => Math.max(1, prev - 1));
                     }
                 } else {
-                    toast.error("Failed to delete doctor");
+                    const errorData = await response.json();
+                    toast.error(errorData.message || "Failed to delete doctor");
                 }
             } catch (error) {
                 console.error("Error deleting doctor:", error);
@@ -197,7 +254,8 @@ export default function Doctors() {
         setEditIndex(null);
         setDoctorId("");
         setDoctorName("");
-        setSpecialization("");
+        setSpecId("");
+        setSpecializationName("");
         setContact("");
         setEmail("");
     }
@@ -212,6 +270,29 @@ export default function Doctors() {
         }
     };
 
+    const handleSpecializationChange = (e) => {
+        const selectedId = e.target.value;
+        setSpecId(selectedId);
+
+        if (selectedId && specializations.length > 0) {
+            const selectedSpec = specializations.find(spec => spec.id.toString() === selectedId);
+            if (selectedSpec) {
+                setSpecializationName(selectedSpec.speciality);
+            }
+        } else {
+            setSpecializationName("");
+        }
+    };
+
+    const getDisplaySpecialization = (doctor) => {
+        if (doctor.spec_ID && specializations.length > 0) {
+            const spec = specializations.find(s => s.id === doctor.spec_ID);
+            return spec ? spec.speciality : doctor.specialization || "Not specified";
+        }
+
+        return doctor.specialization || doctor.speciality || "Not specified";
+    };
+
     return (
         <div className="doctors-container">
             <h2>Doctors</h2>
@@ -222,7 +303,6 @@ export default function Doctors() {
                 </div>
             ) : (
                 <>
-                    {/* TABLE */}
                     {doctors.length === 0 ? (
                         <div className="no-doctors">
                             <Icon icon="mdi:doctor" className="no-doctors-icon" />
@@ -244,13 +324,12 @@ export default function Doctors() {
                                 </thead>
 
                                 <tbody>
-
                                     {paginatedDoctors.map((doctor, index) => (
                                         <tr key={doctor.user_Id || index}>
                                             <td>{doctor.user_Id}</td>
                                             <td>{doctor.user_name || doctor.name || "N/A"}</td>
                                             <td>{doctor.user_email || doctor.email || "No email"}</td>
-                                            <td>{doctor.specialization || "Not specified"}</td>
+                                            <td>{getDisplaySpecialization(doctor)}</td>
                                             <td>{doctor.contact || "No contact"}</td>
                                             <td>
                                                 <div className="action-buttons">
@@ -276,8 +355,6 @@ export default function Doctors() {
                                 </tbody>
                             </table>
 
-
-                            {/* PAGINATION */}
                             <Pagination
                                 currentPage={currentPage}
                                 totalPages={totalPages}
@@ -289,7 +366,6 @@ export default function Doctors() {
                 </>
             )}
 
-            {/* MODAL */}
             {showModal && (
                 <div className="modal-overlay">
                     <div className="modal-box">
@@ -336,12 +412,23 @@ export default function Doctors() {
 
                             <label>
                                 Specialization:
-                                <input
-                                    type="text"
-                                    value={specialization}
-                                    onChange={(e) => setSpecialization(e.target.value)}
-                                    placeholder="e.g., Cardiology"
-                                />
+                                <select
+                                    value={specId}
+                                    onChange={handleSpecializationChange}
+                                    required
+                                >
+                                    <option value="">Select specialization</option>
+                                    {specializations.map((spec) => (
+                                        <option key={spec.id} value={spec.id}>
+                                            {spec.speciality}
+                                        </option>
+                                    ))}
+                                </select>
+                                {specializationName && (
+                                    <small style={{ color: '#666', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                                        Selected: {specializationName}
+                                    </small>
+                                )}
                             </label>
 
                             <label>
@@ -351,6 +438,7 @@ export default function Doctors() {
                                     value={contact}
                                     onChange={(e) => setContact(e.target.value)}
                                     placeholder="e.g., 0312-3456789"
+                                    maxLength="15"
                                 />
                             </label>
 

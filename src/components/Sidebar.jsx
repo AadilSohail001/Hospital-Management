@@ -8,6 +8,7 @@ export default function Sidebar() {
         try {
             const stored = localStorage.getItem("currentUser");
             return stored ? JSON.parse(stored) : null;
+            // eslint-disable-next-line no-unused-vars
         } catch (err) {
             return null;
         }
@@ -107,6 +108,13 @@ export default function Sidebar() {
                             <NavLink to="/contact" className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}>
                                 <Icon icon="mdi:contact-mail" />
                                 <span>Contact Us</span>
+                            </NavLink>
+                        </li>
+
+                        <li>
+                            <NavLink to="/signup" className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}>
+                                <Icon icon="mdi:register" />
+                                <span>Sign Up</span>
                             </NavLink>
                         </li>
                     </>

@@ -66,7 +66,17 @@ function App() {
     <Routes>
       {/* PUBLIC */}
       <Route path="/login" element={<Login />} />
-      <Route path="/signup" element={<Signup />} />
+      {/* <Route path="/signup" element={<Signup />} /> */}
+
+      <Route
+        path="/signup"
+        element={
+          <ProtectedRoute>
+            <Signup />
+          </ProtectedRoute>
+        }
+      />
+
 
       {/* USER ROUTES (role_id = 2) */}
       <Route
