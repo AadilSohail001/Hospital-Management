@@ -58,6 +58,7 @@ import About from "./pages/About";
 import Contact from "./pages/Contact";
 import Patients from "./pages/Patients";
 import Doctors from "./pages/Doctors";
+import Schedule from "./pages/Schedule";
 import Appointment from "./pages/Appointment";
 import DoctorDashboard from "./pages/DoctorDashboard";
 
@@ -89,6 +90,7 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/patients" element={<Patients />} />
         <Route path="/doctors" element={<Doctors />} />
+        <Route path="/schedule" element={<Schedule />} />
         <Route path="/appointment" element={<Appointment />} />
         <Route path="/about" element={<About />} />
         <Route path="/contact" element={<Contact />} />

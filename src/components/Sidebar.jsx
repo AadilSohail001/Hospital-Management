@@ -91,6 +91,13 @@ export default function Sidebar() {
                         </li>
 
                         <li>
+                            <NavLink to="/schedule" className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}>
+                                <Icon icon="streamline-ultimate:doctor-home-visit-1-bold" />
+                                <span>Schedule Doctor</span>
+                            </NavLink>
+                        </li>
+
+                        <li>
                             <NavLink to="/appointment" className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}>
                                 <Icon icon="mdi:calendar" />
                                 <span>Appointments</span>

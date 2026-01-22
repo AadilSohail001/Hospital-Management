@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Icon } from "@iconify/react";
 import Pagination from "../components/Pagination";
+import { toast } from "react-toastify";
 
 import Modal from "../components/appointment/Modal";
 import Reschedule from "../components/appointment/Reschedule";
@@ -10,27 +11,21 @@ import CheckupModalV2 from "../components/appointment/CheckupModalV2";
 
 
 import "../styles/Appointment.css";
-import { appointmentStatuses, getLocalStorageData } from "../utils/functions";
+import { appointmentStatuses } from "../utils/functions";
 
+const API_BASE_URL = "http://localhost:8080/hospital";
 
 export default function Appointment() {
     // Safe state initialization
-    const [doctors, setDoctors] = useState(() => {
-        const data = getLocalStorageData("doctors");
-        return Array.isArray(data) ? data : [];
-    });
-
-    const [patients, setPatients] = useState(() => {
-        const data = getLocalStorageData("patients");
-        return Array.isArray(data) ? data : [];
-    });
-
-    const [appointments, setAppointments] = useState(() => {
-        const data = getLocalStorageData("appointments");
-        return Array.isArray(data) ? data : [];
-    });
+    const [doctors, setDoctors] = useState([]);
+    const [patients, setPatients] = useState([]);
+    const [appointments, setAppointments] = useState([]);
+    const [loading, setLoading] = useState(true);
 
     const [editIndex, setEditIndex] = useState(null);
+    // editId will store the actual appointment ID for API calls
+    const [editId, setEditId] = useState(null);
+
     const [selectedDoctor, setSelectedDoctor] = useState("");
     const [selectedPatient, setSelectedPatient] = useState("");
     const [selectedDate, setSelectedDate] = useState("");
@@ -64,126 +59,219 @@ export default function Appointment() {
     const getPatientPhone = useCallback(
         (patientId) => {
             if (!patientId || !Array.isArray(patients)) return "";
-            const patient = patients.find((p) => p.id === patientId);
+            const patient = patients.find((p) => p.id == patientId);
             return patient?.contact || "";
         },
         [patients]
     );
 
     // Load data on mount safely
-    useEffect(() => {
-        const docData = getLocalStorageData("doctors");
-        setDoctors(Array.isArray(docData) ? docData : []);
+    const fetchData = useCallback(async () => {
+        setLoading(true);
+        try {
+            const token = localStorage.getItem("token");
+            if (!token) {
+                toast.error("Authentication token not found. Please log in.");
+                setLoading(false);
+                return;
+            }
 
-        const patData = getLocalStorageData("patients");
-        setPatients(Array.isArray(patData) ? patData : []);
+            const headers = {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+            };
 
-        const apptData = getLocalStorageData("appointments");
-        setAppointments(Array.isArray(apptData) ? apptData : []);
+            const [doctorsRes, patientsRes, appointmentsRes] = await Promise.all([
+                fetch(`${API_BASE_URL}/users/show-all-doctors`, { headers }),
+                fetch(`${API_BASE_URL}/patients/show-patients`, { headers }),
+                fetch(`${API_BASE_URL}/appointments/show-appointments`, { headers }),
+            ]);
+
+            if (!doctorsRes.ok || !patientsRes.ok || !appointmentsRes.ok) {
+                console.error("Doctor Response:", doctorsRes);
+                console.error("Patient Response:", patientsRes);
+                console.error("Appointment Response:", appointmentsRes);
+                throw new Error("Failed to fetch initial data.");
+            }
+
+            const doctorsData = await doctorsRes.json();
+            const patientsData = await patientsRes.json();
+            const appointmentsData = await appointmentsRes.json();
+
+            const allUsers = Array.isArray(doctorsData) ? doctorsData : doctorsData.users || [];
+            const doctorsList = allUsers.filter(user => user.role_id === 1 || user.role_id === '1');
+
+            setDoctors(doctorsList);
+            setPatients(Array.isArray(patientsData) ? patientsData : []);
+
+            const appointmentsList = Array.isArray(appointmentsData) ? appointmentsData : appointmentsData.appointments || [];
+
+            const formattedAppointments = appointmentsList.map(appt => ({
+                id: appt.id,
+                patientName: appt.patient?.patient_name || 'Unknown Patient',
+                patientId: appt.patientId,
+                doctorName: appt.doctor?.user_name || 'Unknown Doctor',
+                doctorId: appt.doctorId,
+                doctorEmail: appt.doctor?.user_email,
+                contact: appt.patient?.contact || "Not provided",
+                date: appt.date,
+                time: appt.time,
+                status: appt.status,
+                checkupReport: appt.checkupReport
+            }));
+
+            setAppointments(formattedAppointments);
+
+        } catch (error) {
+            toast.error(error.message || "Failed to load data.");
+            console.error("Fetch data error:", error);
+        } finally {
+            setLoading(false);
+        }
     }, []);
 
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
     const handlePatientChange = (e) => {
-        const patientId = e.target.value;
+        const patientId = parseInt(e.target.value, 10);
         setSelectedPatient(patientId);
         setContact(getPatientPhone(patientId) || "");
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
         if (!selectedDoctor || !selectedPatient || !selectedDate || !selectedTime) {
-            alert("Please fill all required fields!");
+            toast.error("Please fill all required fields!");
             return;
         }
 
-        // Check duplicate
-        const alreadyScheduled = appointments.find(
-            (appt, index) => appt.patientId === selectedPatient && index !== editIndex
-        );
+        const isEditing = editIndex !== null;
 
-        if (alreadyScheduled) {
-            setConflictAppointment(alreadyScheduled);
-            return;
-        }
-        setConflictAppointment(null);
-
-        // FIX: Find doctor by ID or name
-        const doctor = doctors.find((d) => {
-            // Try to match by ID first
-            if (d.id && d.id == selectedDoctor) return true;
-            // If selectedDoctor is a name (string), try to match by name
-            if (typeof selectedDoctor === 'string' && d.name === selectedDoctor) return true;
-            // If selectedDoctor is an email, try to match by email
-            if (d.email && d.email === selectedDoctor) return true;
-            return false;
-        });
-
-        const patient = patients.find((p) => p.id === selectedPatient);
-
-        if (!doctor || !patient) {
-            alert("Doctor or patient not found!");
-            console.error("Doctor not found. SelectedDoctor:", selectedDoctor, "Doctors:", doctors);
-            return;
-        }
-
-        const newAppointment = {
-            // eslint-disable-next-line react-hooks/purity
-            id: editIndex !== null ? appointments[editIndex].id : Date.now(),
-            patientName: patient.name,
-            patientId: selectedPatient,
-            doctorName: doctor.name,
-            doctorId: doctor.id, // FIX: Use the actual doctor.id, not the selected value
-            doctorEmail: doctor.email, // Add doctor email for better matching
-            contact: contact || getPatientPhone(selectedPatient) || "Not provided",
+        const appointmentData = {
+            patientId: parseInt(selectedPatient, 10),
+            doctorId: parseInt(selectedDoctor, 10),
             date: selectedDate,
             time: selectedTime,
-            status: editIndex !== null ? appointments[editIndex].status : "Pending",
+            status: isEditing ? appointments[editIndex].status : "Pending",
         };
 
-        const updatedAppointments =
-            editIndex !== null
-                ? appointments.map((appt, i) => (i === editIndex ? newAppointment : appt))
-                : [...appointments, newAppointment];
+        const url = isEditing
+            ? `${API_BASE_URL}/appointments/update-appointment/${editId}`
+            : `${API_BASE_URL}/appointments/create-appointment`;
 
-        setAppointments(updatedAppointments);
-        localStorage.setItem("appointments", JSON.stringify(updatedAppointments));
+        try {
+            const token = localStorage.getItem("token");
+            const response = await fetch(url, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify(appointmentData),
+            });
 
-        // Log for debugging
-        // console.log("Appointment created/updated:", newAppointment);
-        // console.log("All appointments:", updatedAppointments);
+            const result = await response.json();
 
-        resetForm();
-        setShowModal(false);
+            if (!response.ok) {
+                // The backend sends a 409 for conflicts
+                if (response.status === 409) {
+                    setConflictAppointment(result.existingAppointment || { ...appointmentData, doctorName: doctors.find(d => d.user_Id == selectedDoctor)?.user_name, patientName: patients.find(p => p.id == selectedPatient)?.patient_name });
+                }
+                throw new Error(result.message || `Failed to ${isEditing ? 'update' : 'create'} appointment.`);
+            }
+
+            toast.success(`Appointment ${isEditing ? 'updated' : 'created'} successfully!`);
+            fetchData();
+            closeModal();
+
+        } catch (error) {
+            toast.error(error.message);
+            console.error("Submit error:", error);
+        }
     };
 
-    const handleDelete = (index) => {
-        if (window.confirm("Delete this appointment?")) {
-            const updatedAppointments = appointments.filter((_, i) => i !== index);
-            setAppointments(updatedAppointments);
-            localStorage.setItem("appointments", JSON.stringify(updatedAppointments));
+    const handleDelete = async (index) => {
+        const appointmentToDelete = appointments[index];
+        if (window.confirm(`Are you sure you want to delete the appointment for ${appointmentToDelete.patientName}?`)) {
+            try {
+                const token = localStorage.getItem("token");
+                const response = await fetch(`${API_BASE_URL}/appointments/delete-appointment/${appointmentToDelete.id}`, {
+                    method: "POST", // Backend uses POST for delete
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.message || "Failed to delete appointment.");
+                }
+
+                toast.success("Appointment deleted successfully!");
+                fetchData();
+            } catch (error) {
+                toast.error(error.message);
+                console.error("Delete error:", error);
+            }
         }
     };
 
     const handleEdit = (index) => {
         const appt = appointments[index];
         setSelectedPatient(appt.patientId);
-        setSelectedDoctor(appt.doctorId || appt.doctorName); // Use ID or name
+        setSelectedDoctor(appt.doctorId);
         setSelectedDate(appt.date);
         setSelectedTime(appt.time);
         setContact(appt.contact);
         setEditIndex(index);
+        setEditId(appt.id);
         setShowModal(true);
     };
 
-    const toggleStatus = (index) => {
-        const updatedAppointments = [...appointments];
-        updatedAppointments[index].status =
-            updatedAppointments[index].status === "Pending" ? "Checked" : "Pending";
-        setAppointments(updatedAppointments);
-        localStorage.setItem("appointments", JSON.stringify(updatedAppointments));
+    const toggleStatus = async (index) => {
+        const appointmentToUpdate = appointments[index];
+        const newStatus = appointmentToUpdate.status === "Pending" ? "Checked" : "Pending";
+
+        const updateData = {
+            patientId: appointmentToUpdate.patientId,
+            doctorId: appointmentToUpdate.doctorId,
+            date: appointmentToUpdate.date,
+            time: appointmentToUpdate.time,
+            status: newStatus,
+        };
+
+        try {
+            const token = localStorage.getItem("token");
+            const response = await fetch(`${API_BASE_URL}/appointments/update-appointment/${appointmentToUpdate.id}`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify(updateData),
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.message || "Failed to update status.");
+            }
+
+            toast.success(`Appointment status changed to ${newStatus}`);
+            fetchData();
+        } catch (error) {
+            toast.error(error.message);
+            console.error("Status toggle error:", error);
+        }
     };
 
     const resetForm = () => {
         setEditIndex(null);
+        setEditId(null);
         setSelectedPatient("");
         setSelectedDoctor("");
         setSelectedDate("");
@@ -220,36 +308,6 @@ export default function Appointment() {
 
     const onCloseHandler = () => {
         setShowReschedule(false);
-    };
-
-    // Fix existing appointments to have proper doctorId
-    const fixAppointmentDoctorIds = () => {
-        const updatedAppointments = appointments.map(appt => {
-            // If doctorId exists and is correct, keep it
-            if (appt.doctorId && doctors.some(d => d.id == appt.doctorId)) {
-                return appt;
-            }
-
-            // Try to find doctor by name
-            const foundDoctor = doctors.find(d =>
-                d.name === appt.doctorName ||
-                (appt.doctorName && d.name.includes(appt.doctorName.replace("Dr. ", "")))
-            );
-
-            if (foundDoctor) {
-                return {
-                    ...appt,
-                    doctorId: foundDoctor.id,
-                    doctorEmail: foundDoctor.email
-                };
-            }
-
-            return appt;
-        });
-
-        setAppointments(updatedAppointments);
-        localStorage.setItem("appointments", JSON.stringify(updatedAppointments));
-        alert("Appointments fixed! Doctor IDs updated.");
     };
 
     const handleCheckupSubmit = (checkupData) => {
@@ -299,26 +357,13 @@ export default function Appointment() {
                             <span className="stat-number">{completedAppointments}</span>
                             <span className="stat-label">Checked</span>
                         </div>
-                        <button
-                            onClick={fixAppointmentDoctorIds}
-                            className="fix-btn"
-                            style={{
-                                padding: '5px 10px',
-                                backgroundColor: '#ff9800',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                marginLeft: '10px'
-                            }}
-                        >
-                            Fix Doctor IDs
-                        </button>
                     </div>
                 </header>
             )}
 
             <div className="appointment-container">
+                {loading && <div className="loading-state">Loading appointments...</div>}
+
                 {/* Conflict Card, Modal, Reschedule */}
                 {conflictAppointment && (
                     <div className="conflict-card">
@@ -423,7 +468,7 @@ export default function Appointment() {
                 /> */}
 
 
-                {!showModal && !showCheckup && (
+                {!loading && !showModal && !showCheckup && (
                     <div className="appointment-main-content">
                         <div className="appointment-list-header">
                             <h2>
