@@ -1,4 +1,6 @@
+import React from "react";
 import { Icon } from "@iconify/react";
+import Select from "react-select";
 import MyButton from "../MyButtons";
 
 export default function Modal({
@@ -14,7 +16,7 @@ export default function Modal({
     selectedDate,
     selectedTime,
     contact,
-    handlePatientChange,
+    setSelectedPatient,
     setSelectedDoctor,
     setSelectedDate,
     setSelectedTime,
@@ -27,6 +29,29 @@ export default function Modal({
 
     // lock date/time if in edit mode
     const isEditMode = editIndex !== null;
+
+    const patientOptions = patients.map(p => ({
+        value: p.id,
+        label: `ID: ${p.id} - ${p.patient_name || p.name} (${p.contact})`
+    }));
+
+    const doctorOptions = doctors.map(d => ({
+        value: d.user_Id || d.id,
+        label: `ID: ${d.user_Id || d.id} - ${d.user_name || d.name} (${d.specialization || d.speciality || "General"})`
+    }));
+
+    const handlePatientSelectChange = (selectedOption) => {
+        if (selectedOption) {
+            setSelectedPatient(selectedOption.value);
+            const p = patients.find(pat => pat.id == selectedOption.value);
+            if (p) {
+                setContact(p.contact || "");
+            }
+        } else {
+            setSelectedPatient("");
+            setContact("");
+        }
+    };
 
     return (
         <div className="modal-overlay" onClick={closeModal}>
@@ -41,34 +66,38 @@ export default function Modal({
                 <form className="appointment-form" onSubmit={handleSubmit}>
                     <div className="form-grid">
 
+                        {/* Patient Search */}
+                        <div className="form-group">
+                            <label><Icon icon="mdi:account-search" /> Search Patient (ID)</label>
+                            <Select
+                                options={patientOptions}
+                                value={patientOptions.find(opt => opt.value == selectedPatient) || null}
+                                onChange={handlePatientSelectChange}
+                                placeholder="Search by ID..."
+                                isClearable
+                            />
+                        </div>
+
                         {/* Patient */}
                         <div className="form-group">
-                            <label><Icon icon="mdi:account" /> Select Patient</label>
-                            <select value={selectedPatient} onChange={handlePatientChange} required>
-                                <option value="">-- Select Patient --</option>
-                                {patients.map(patient => (
-                                    <option key={patient.id} value={patient.id}>
-                                        {patient.name} ({patient.contact})
-                                    </option>
-                                ))}
-                            </select>
+                            <label><Icon icon="mdi:account" /> Patient Name</label>
+                            <input
+                                type="text"
+                                value={patients.find(p => p.id == selectedPatient)?.patient_name || patients.find(p => p.id == selectedPatient)?.name || ""}
+                                readOnly
+                            />
                         </div>
 
                         {/* Doctor */}
                         <div className="form-group">
                             <label><Icon icon="mdi:doctor" /> Select Doctor</label>
-                            <select
-                                value={selectedDoctor}
-                                onChange={(e) => setSelectedDoctor(e.target.value)}
-                                required
-                            >
-                                <option value="">-- Select Doctor --</option>
-                                {doctors.map(doctor => (
-                                    <option key={doctor.id} value={doctor.id}>
-                                        {doctor.name} ({doctor.specialization})
-                                    </option>
-                                ))}
-                            </select>
+                            <Select
+                                options={doctorOptions}
+                                value={doctorOptions.find(opt => opt.value == selectedDoctor) || null}
+                                onChange={(option) => setSelectedDoctor(option ? option.value : "")}
+                                placeholder="Select Doctor..."
+                                isClearable
+                            />
                         </div>
 
                         {/* Contact */}
@@ -80,6 +109,7 @@ export default function Modal({
                                     value={contact}
                                     onChange={(e) => setContact(e.target.value)}
                                     className={isContactAutoFilled ? "auto-filled" : ""}
+                                    readOnly
                                 />
                                 {isContactAutoFilled && (
                                     <span className="auto-fill-badge">

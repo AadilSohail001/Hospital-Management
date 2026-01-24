@@ -46,11 +46,6 @@ export default function Doctors() {
 
                 if (doctorsResponse.ok) {
                     const doctorsData = await doctorsResponse.json();
-
-                    // DEBUG: Log what the API returns
-                    console.log("=== DEBUG: API RESPONSE ===");
-                    console.log("Full response:", doctorsData);
-
                     const allUsers = Array.isArray(doctorsData) ? doctorsData : doctorsData.users || [];
 
                     // DEBUG: Log first user to see structure
@@ -81,19 +76,13 @@ export default function Doctors() {
                         return false;
                     });
 
-                    console.log("=== DEBUG: FILTERING RESULTS ===");
-                    console.log("Total users from API:", allUsers.length);
-                    console.log("Filtered doctors:", doctorsList.length);
-                    console.log("Doctors list:", doctorsList);
-
                     setDoctors(doctorsList);
                 } else {
-                    console.error("Failed to fetch doctors");
                     setDoctors([]);
                 }
 
+                // eslint-disable-next-line no-unused-vars
             } catch (error) {
-                console.error("Error loading data:", error);
                 toast.error("Error loading data");
                 setDoctors([]);
             } finally {
@@ -144,8 +133,6 @@ export default function Doctors() {
                 contact: contact ? parseInt(contact) : 0
             };
 
-            console.log("Sending to backend:", updateData);
-
             try {
                 const token = localStorage.getItem("token");
                 const response = await fetch(`${API_BASE_URL}/users/update-user/${existingDoctor.user_Id}`, {
@@ -158,8 +145,8 @@ export default function Doctors() {
                 });
 
                 if (response.ok) {
+                    // eslint-disable-next-line no-unused-vars
                     const responseData = await response.json();
-                    console.log("Backend response:", responseData);
 
                     const updatedDoctors = [...doctors];
                     updatedDoctors[editIndex] = {
@@ -179,8 +166,8 @@ export default function Doctors() {
                     const errorData = await response.json();
                     toast.error(errorData.message || "Failed to update doctor");
                 }
+                // eslint-disable-next-line no-unused-vars
             } catch (error) {
-                console.error("Network error:", error);
                 toast.error("Network error");
             }
         } else {
@@ -242,8 +229,8 @@ export default function Doctors() {
                     const errorData = await response.json();
                     toast.error(errorData.message || "Failed to delete doctor");
                 }
+                // eslint-disable-next-line no-unused-vars
             } catch (error) {
-                console.error("Error deleting doctor:", error);
                 toast.error("Error deleting doctor");
             }
         }

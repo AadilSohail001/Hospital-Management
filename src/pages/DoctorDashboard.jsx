@@ -26,7 +26,6 @@ export default function DoctorDashboard() {
 
             try {
                 setLoading(true);
-
                 // 1. Fetch Specializations (to map spec_ID to name)
                 let specializations = [];
                 try {
@@ -39,7 +38,6 @@ export default function DoctorDashboard() {
                 } catch (err) {
                     console.warn("Failed to fetch specializations", err);
                 }
-
                 // 2. Fetch Doctor Profile
                 let currentDoctor = null;
                 try {

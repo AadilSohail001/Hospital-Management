@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Icon } from "@iconify/react";
-import Pagination from "../components/Pagination";
 import { toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+import Pagination from "../components/Pagination";
 
 import Modal from "../components/appointment/Modal";
 import Reschedule from "../components/appointment/Reschedule";
@@ -46,10 +47,8 @@ export default function Appointment() {
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
     const recordsPerPage = 3;
-
     const lastIndex = currentPage * recordsPerPage;
     const firstIndex = lastIndex - recordsPerPage;
-
     const paginatedAppointments = Array.isArray(appointments)
         ? appointments.slice(firstIndex, lastIndex)
         : [];
@@ -81,46 +80,66 @@ export default function Appointment() {
                 Authorization: `Bearer ${token}`,
             };
 
-            const [doctorsRes, patientsRes, appointmentsRes] = await Promise.all([
-                fetch(`${API_BASE_URL}/users/show-all-doctors`, { headers }),
-                fetch(`${API_BASE_URL}/patients/show-patients`, { headers }),
-                fetch(`${API_BASE_URL}/appointments/show-appointments`, { headers }),
-            ]);
+            // Fetch sequentially to avoid potential server concurrency issues and better error handling
+            const doctorsRes = await fetch(`${API_BASE_URL}/users/show-all-doctors`,
+                { method: "GET", headers });
 
-            if (!doctorsRes.ok || !patientsRes.ok || !appointmentsRes.ok) {
-                console.error("Doctor Response:", doctorsRes);
-                console.error("Patient Response:", patientsRes);
-                console.error("Appointment Response:", appointmentsRes);
-                throw new Error("Failed to fetch initial data.");
+            if (!doctorsRes.ok) {
+                throw new Error(`Failed to fetch doctors: ${doctorsRes.status}`);
             }
-
             const doctorsData = await doctorsRes.json();
+
+            const patientsRes = await fetch(`${API_BASE_URL}/patients/show-patients`,
+                { method: "GET", headers });
+
+            if (!patientsRes.ok) {
+                throw new Error(`Failed to fetch patients: ${patientsRes.status}`);
+            }
             const patientsData = await patientsRes.json();
-            const appointmentsData = await appointmentsRes.json();
+
+            // const appointmentsRes = await fetch(`${API_BASE_URL}/appointments/show-all-appointments`, { method: "GET", headers });
+            // if (!appointmentsRes.ok) {
+            //     throw new Error(`Failed to fetch appointments: ${appointmentsRes.status}`);
+            // }
+            // const appointmentsData = await appointmentsRes.json();
 
             const allUsers = Array.isArray(doctorsData) ? doctorsData : doctorsData.users || [];
-            const doctorsList = allUsers.filter(user => user.role_id === 1 || user.role_id === '1');
+            const doctorsList = allUsers.filter(user => {
+                // Check for role_id = 1 (doctor)
+                if (user.role_id === 1 || user.role_id === '1') return true;
+
+                // Check for role field string
+                if (user.role) {
+                    const role = user.role.toString().toLowerCase();
+                    return role.includes('doctor') || role === '1';
+                }
+
+                // Check for user_type
+                if (user.user_type === 'doctor' || user.type === 'doctor') return true;
+
+                return false;
+            });
 
             setDoctors(doctorsList);
             setPatients(Array.isArray(patientsData) ? patientsData : []);
 
-            const appointmentsList = Array.isArray(appointmentsData) ? appointmentsData : appointmentsData.appointments || [];
+            // const appointmentsList = Array.isArray(appointmentsData) ? appointmentsData : appointmentsData.appointments || [];
 
-            const formattedAppointments = appointmentsList.map(appt => ({
-                id: appt.id,
-                patientName: appt.patient?.patient_name || 'Unknown Patient',
-                patientId: appt.patientId,
-                doctorName: appt.doctor?.user_name || 'Unknown Doctor',
-                doctorId: appt.doctorId,
-                doctorEmail: appt.doctor?.user_email,
-                contact: appt.patient?.contact || "Not provided",
-                date: appt.date,
-                time: appt.time,
-                status: appt.status,
-                checkupReport: appt.checkupReport
-            }));
+            // const formattedAppointments = appointmentsList.map(appt => ({
+            //     id: appt.id,
+            //     patientName: appt.patient?.patient_name || 'Unknown Patient',
+            //     patientId: appt.patientId,
+            //     doctorName: appt.doctor?.user_name || 'Unknown Doctor',
+            //     doctorId: appt.doctorId,
+            //     doctorEmail: appt.doctor?.user_email,
+            //     contact: appt.patient?.contact || "Not provided",
+            //     date: appt.date,
+            //     time: appt.time,
+            //     status: appt.status,
+            //     checkupReport: appt.checkupReport
+            // }));
 
-            setAppointments(formattedAppointments);
+            // setAppointments(formattedAppointments);
 
         } catch (error) {
             toast.error(error.message || "Failed to load data.");
@@ -133,12 +152,6 @@ export default function Appointment() {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
-
-    const handlePatientChange = (e) => {
-        const patientId = parseInt(e.target.value, 10);
-        setSelectedPatient(patientId);
-        setContact(getPatientPhone(patientId) || "");
-    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -311,10 +324,6 @@ export default function Appointment() {
     };
 
     const handleCheckupSubmit = (checkupData) => {
-        //logs for Checking data received from Formik
-        console.log('Checkup data received from Formik:', checkupData);
-        //==============================================
-
         if (checkupIndex === null) return;
 
         const updatedAppointments = [...appointments];
@@ -419,11 +428,11 @@ export default function Appointment() {
                     patients={patients}
                     doctors={doctors}
                     selectedPatient={selectedPatient}
+                    setSelectedPatient={setSelectedPatient}
                     selectedDoctor={selectedDoctor}
                     selectedDate={selectedDate}
                     selectedTime={selectedTime}
                     contact={contact}
-                    handlePatientChange={handlePatientChange}
                     setSelectedDoctor={setSelectedDoctor}
                     setSelectedDate={setSelectedDate}
                     setSelectedTime={setSelectedTime}

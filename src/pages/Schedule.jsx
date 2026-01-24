@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Icon } from "@iconify/react";
 import { toast } from "react-toastify";
 import "../styles/Schedule.css";
@@ -8,46 +9,44 @@ const API_BASE_URL = "http://localhost:8080/hospital";
 export default function Schedule() {
     const [doctors, setDoctors] = useState([]);
     const [filteredDoctors, setFilteredDoctors] = useState([]);
+    const [searchParams, setSearchParams] = useSearchParams();
+    const [specialities, setSpecialities] = useState([]);
     const [searchTerm, setSearchTerm] = useState("");
-    const [selectedDoctor, setSelectedDoctor] = useState(() => {
-        const saved = localStorage.getItem("selectedScheduleDoctor");
-        return saved ? JSON.parse(saved) : null;
-    });
+    const [selectedDoctor, setSelectedDoctor] = useState(null);
 
     const [scheduleDays, setScheduleDays] = useState([]);
-    const [scheduleRows, setScheduleRows] = useState(() => {
-        const saved = localStorage.getItem("scheduleRows");
-        return saved ? JSON.parse(saved) : [{
-            dayIndex: -1,
-            from: "09:00",
-            to: "17:00",
-            duration: "30",
-            isScheduled: false
-        }];
-    });
+    const [scheduleRows, setScheduleRows] = useState([{
+        dayIndex: -1,
+        from: "09:00",
+        to: "17:00",
+        duration: "30",
+        isScheduled: false
+    }]);
 
     useEffect(() => {
-
-        // eslint-disable-next-line react-hooks/immutability
         fetchDoctors();
-        // eslint-disable-next-line react-hooks/immutability
         fetchScheduleDays();
+        fetchSpecialities();
     }, []);
 
     useEffect(() => {
-        if (selectedDoctor) {
-            localStorage.setItem(
-                "selectedScheduleDoctor",
-                JSON.stringify(selectedDoctor)
-            );
-        } else {
-            localStorage.removeItem("selectedScheduleDoctor");
+        const doctorId = searchParams.get("doctorId");
+        if (doctorId && doctors.length > 0) {
+            const doc = doctors.find(d => d.id == doctorId);
+            if (doc) {
+                setSelectedDoctor(doc);
+            }
+        } else if (!doctorId) {
+            setSelectedDoctor(null);
         }
-    }, [selectedDoctor]);
+    }, [doctors, searchParams]);
 
     useEffect(() => {
-        localStorage.setItem("scheduleRows", JSON.stringify(scheduleRows));
-    }, [scheduleRows]);
+        if (selectedDoctor && scheduleDays.length > 0) {
+            fetchDoctorTimetable(selectedDoctor.id);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedDoctor, scheduleDays]);
 
     const fetchDoctors = async () => {
         try {
@@ -100,6 +99,60 @@ export default function Schedule() {
         }
     };
 
+    const fetchSpecialities = async () => {
+        try {
+            const token = localStorage.getItem("token");
+            const res = await fetch(
+                `${API_BASE_URL}/users/get-doctor-specialities`,
+                {
+                    headers: { Authorization: `Bearer ${token}` }
+                }
+            );
+
+            if (res.ok) {
+                const data = await res.json();
+                setSpecialities(data);
+            }
+        } catch (err) {
+            console.error("Failed to fetch specialities", err);
+        }
+    };
+
+    const fetchDoctorTimetable = async (doctorId) => {
+        try {
+            const token = localStorage.getItem("token");
+            const res = await fetch(
+                `${API_BASE_URL}/schedule-doctors/show-doctor-timetable/${doctorId}`,
+                {
+                    headers: { Authorization: `Bearer ${token}` }
+                }
+            );
+
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data) && data.length > 0) {
+                    const rows = data.map(item => {
+                        const dIndex = scheduleDays.findIndex(d => d.id === item.doctor_day_ID);
+                        return {
+                            id: item.id,
+                            dayIndex: dIndex !== -1 ? dIndex : -1,
+                            from: item.doctor_from_time ? item.doctor_from_time.toString().substring(0, 5) : "09:00",
+                            to: item.doctor_to_time ? item.doctor_to_time.toString().substring(0, 5) : "17:00",
+                            duration: item.doc_slot_dur ? String(item.doc_slot_dur) : "30",
+                            isScheduled: true
+                        };
+                    });
+                    const validRows = rows.filter(r => r.dayIndex !== -1);
+                    setScheduleRows(validRows.length > 0 ? validRows : [{ dayIndex: -1, from: "09:00", to: "17:00", duration: "30", isScheduled: false }]);
+                } else {
+                    setScheduleRows([{ dayIndex: -1, from: "09:00", to: "17:00", duration: "30", isScheduled: false }]);
+                }
+            }
+        } catch (err) {
+            console.error("Failed to fetch timetable", err);
+        }
+    };
+
     const handleSearch = (e) => {
         const term = e.target.value.toLowerCase();
         setSearchTerm(term);
@@ -123,12 +176,24 @@ export default function Schedule() {
     };
 
     const handleAddRow = () => {
-        if (scheduleRows.length >= 6) return;
-        setScheduleRows(prev => {
-            const lastRow = prev[prev.length - 1];
-            let nextDayIndex = lastRow.dayIndex + 1;
-            if (nextDayIndex >= scheduleDays.length) nextDayIndex = 0;
+        if (scheduleRows.length >= 6) {
+            toast.info("Maximum schedule days reached.");
+            return;
+        }
 
+        const usedDayIndices = new Set(scheduleRows.map(row => row.dayIndex).filter(index => index !== -1));
+        let nextDayIndex = -1;
+
+        if (scheduleDays.length > 0) {
+            for (let i = 0; i < scheduleDays.length; i++) {
+                if (!usedDayIndices.has(i)) {
+                    nextDayIndex = i;
+                    break;
+                }
+            }
+        }
+
+        setScheduleRows(prev => {
             return [...prev, { dayIndex: nextDayIndex, from: "09:00", to: "17:00", duration: "30", isScheduled: false }];
         });
     };
@@ -139,11 +204,86 @@ export default function Schedule() {
         setScheduleRows(updated);
     };
 
-    const handleScheduleClick = (rowIndex) => {
-        const updated = [...scheduleRows];
-        updated[rowIndex].isScheduled = true;
-        setScheduleRows(updated);
-        toast.success("Day scheduled successfully!");
+    const handleScheduleClick = async (rowIndex) => {
+        const row = scheduleRows[rowIndex];
+        if (row.dayIndex === -1) {
+            toast.error("Please select a day first");
+            return;
+        }
+
+        const dayObj = scheduleDays[row.dayIndex];
+        const payload = {
+            docID: selectedDoctor.id,
+            dayID: dayObj.id,
+            from_time: row.from,
+            to_time: row.to,
+            slot_duration: row.duration
+        };
+
+        try {
+            const token = localStorage.getItem("token");
+            let url = `${API_BASE_URL}/schedule-doctors/save-doctor-timetable`;
+            if (row.id) {
+                url = `${API_BASE_URL}/schedule-doctors/edit-doctor-timetable/${row.id}`;
+            }
+
+            const res = await fetch(url, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (res.ok) {
+                const savedData = await res.json();
+                toast.success("Schedule saved successfully!");
+
+                // This is the key change: we modify the state in one go.
+                setScheduleRows(prevRows => {
+                    // 1. Mark the current row as scheduled.
+                    const updatedRows = prevRows.map((r, i) => {
+                        if (i === rowIndex) {
+                            return {
+                                ...r,
+                                id: savedData.timetable?.id || savedData.id || r.id,
+                                isScheduled: true
+                            };
+                        }
+                        return r;
+                    });
+
+                    // 2. If it was a NEW schedule (not an edit) and we have space, add a new row.
+                    if (!row.id && updatedRows.length < 6) {
+                        const usedDayIndices = new Set(updatedRows.map(r => r.dayIndex).filter(index => index !== -1));
+                        let nextDayIndex = -1;
+
+                        if (scheduleDays.length > 0) {
+                            for (let i = 0; i < scheduleDays.length; i++) {
+                                if (!usedDayIndices.has(i)) {
+                                    nextDayIndex = i;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Only add a new row if there's an available day.
+                        if (nextDayIndex !== -1) {
+                            updatedRows.push({ dayIndex: nextDayIndex, from: "09:00", to: "17:00", duration: "30", isScheduled: false });
+                        }
+                    }
+
+                    return updatedRows;
+                });
+
+            } else {
+                toast.error("Failed to save schedule");
+            }
+            // eslint-disable-next-line no-unused-vars
+        } catch (err) {
+            toast.error("Error saving schedule");
+        }
     };
 
     const handleEditClick = (rowIndex) => {
@@ -153,6 +293,14 @@ export default function Schedule() {
         toast.info("You can now edit the schedule for this day.");
     };
 
+    const getSpecialityName = (doc) => {
+        if (doc.specialization) return doc.specialization;
+        if (doc.spec_ID) {
+            const spec = specialities.find(s => s.id === doc.spec_ID);
+            return spec ? spec.speciality : "Specialist";
+        }
+        return "Specialist";
+    };
 
     const scheduledDayIndices = scheduleRows
         .filter(r => r.isScheduled && r.dayIndex !== -1)
@@ -180,11 +328,11 @@ export default function Schedule() {
                             <div
                                 key={doc.user_Id}
                                 className="doctor-card"
-                                onClick={() => setSelectedDoctor(doc)}
+                                onClick={() => setSearchParams({ doctorId: doc.id })}
                             >
                                 <Icon icon="mdi:doctor" />
                                 <h3>{doc.user_name}</h3>
-                                <p>{doc.specialization || "Specialist"}</p>
+                                <p>{getSpecialityName(doc)}</p>
                             </div>
                         ))}
                     </div>
@@ -195,13 +343,19 @@ export default function Schedule() {
                         <button
                             className="back-btn"
                             onClick={() => {
-                                setSelectedDoctor(null);
+                                setSearchParams({});
                                 setScheduleRows([{ dayIndex: -1, from: "09:00", to: "17:00", duration: "30", isScheduled: false }]);
                             }}
                         >
                             <Icon icon="mdi:arrow-left" /> Back
                         </button>
                     </div>
+
+                    <div className="selected-doctor-info" style={{ marginBottom: '20px', padding: '15px', background: '#f8f9fa', borderRadius: '8px', borderLeft: '4px solid #667eea' }}>
+                        <h3 style={{ margin: 0, color: '#2d3748' }}>{selectedDoctor.user_name}</h3>
+                        <p style={{ margin: '5px 0 0', color: '#718096' }}>{getSpecialityName(selectedDoctor)}</p>
+                    </div>
+
 
                     {[...scheduleRows]
                         .map((row, index) => ({ ...row, originalIndex: index }))
@@ -277,7 +431,7 @@ export default function Schedule() {
                                             <button
                                                 className="add-row-btn"
                                                 onClick={handleAddRow}
-                                                disabled={scheduleRows.length >= 7}
+                                                disabled={scheduleRows.length >= 6}
                                             >
                                                 <Icon icon="mdi:plus" /> Add Row
                                             </button>
