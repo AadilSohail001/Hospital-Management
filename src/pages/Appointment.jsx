@@ -6,10 +6,7 @@ import Pagination from "../components/Pagination";
 
 import Modal from "../components/appointment/Modal";
 import Reschedule from "../components/appointment/Reschedule";
-// import CheckupModal from "../components/appointment/CheckupModal";
-//date 1/4/2026 changes 
 import CheckupModalV2 from "../components/appointment/CheckupModalV2";
-
 
 import "../styles/Appointment.css";
 import { appointmentStatuses } from "../utils/functions";
@@ -24,7 +21,6 @@ export default function Appointment() {
     const [loading, setLoading] = useState(true);
 
     const [editIndex, setEditIndex] = useState(null);
-    // editId will store the actual appointment ID for API calls
     const [editId, setEditId] = useState(null);
 
     const [selectedDoctor, setSelectedDoctor] = useState("");
@@ -32,6 +28,7 @@ export default function Appointment() {
     const [selectedDate, setSelectedDate] = useState("");
     const [selectedTime, setSelectedTime] = useState("");
     const [contact, setContact] = useState("");
+    const [availableSlots, setAvailableSlots] = useState([]);
     const [showModal, setShowModal] = useState(false);
     const ModalLabel = "Schedule New Appointment";
 
@@ -39,10 +36,9 @@ export default function Appointment() {
     const [rescheduleIndex, setRescheduleIndex] = useState(null);
     const [conflictAppointment, setConflictAppointment] = useState(null);
 
-    //Checkup Modal
+    // Checkup Modal
     const [showCheckup, setShowCheckup] = useState(false);
     const [checkupIndex, setCheckupIndex] = useState(null);
-
 
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
@@ -80,70 +76,92 @@ export default function Appointment() {
                 Authorization: `Bearer ${token}`,
             };
 
-            // Fetch sequentially to avoid potential server concurrency issues and better error handling
-            const doctorsRes = await fetch(`${API_BASE_URL}/users/show-all-doctors`,
-                { method: "GET", headers });
+            // Fetch doctors
+            const doctorsRes = await fetch(`${API_BASE_URL}/users/show-all-doctors`, {
+                method: "GET",
+                headers,
+            });
 
             if (!doctorsRes.ok) {
                 throw new Error(`Failed to fetch doctors: ${doctorsRes.status}`);
             }
             const doctorsData = await doctorsRes.json();
 
-            const patientsRes = await fetch(`${API_BASE_URL}/patients/show-patients`,
-                { method: "GET", headers });
+            // Fetch patients
+            const patientsRes = await fetch(`${API_BASE_URL}/patients/show-patients`, {
+                method: "GET",
+                headers,
+            });
 
             if (!patientsRes.ok) {
                 throw new Error(`Failed to fetch patients: ${patientsRes.status}`);
             }
             const patientsData = await patientsRes.json();
 
-            // const appointmentsRes = await fetch(`${API_BASE_URL}/appointments/show-all-appointments`, { method: "GET", headers });
-            // if (!appointmentsRes.ok) {
-            //     throw new Error(`Failed to fetch appointments: ${appointmentsRes.status}`);
-            // }
-            // const appointmentsData = await appointmentsRes.json();
+            // ✅ FIXED: Fetch appointments from backend
+            const appointmentsRes = await fetch(`${API_BASE_URL}/appointments/show-appointments`, {
+                method: "GET",
+                headers,
+            });
 
+            if (!appointmentsRes.ok) {
+                console.warn("Could not fetch appointments, continuing with empty list");
+                setAppointments([]);
+            } else {
+                const appointmentsData = await appointmentsRes.json();
+
+                // ✅ FIXED: Handle backend response structure
+                const appointmentsList = Array.isArray(appointmentsData)
+                    ? appointmentsData
+                    : appointmentsData.appointments || appointmentsData.data || [];
+
+                // ✅ FIXED: Format appointments to match frontend structure
+                const formattedAppointments = appointmentsList.map(appt => {
+                    // Find patient and doctor details
+                    const patient = Array.isArray(patientsData)
+                        ? patientsData.find(p => p.id == appt.patient_ID || p.patient_id == appt.patient_ID)
+                        : null;
+
+                    const doctor = Array.isArray(doctorsData) || Array.isArray(doctorsData?.users)
+                        ? (doctorsData.users || doctorsData).find(d => d.user_Id == appt.doctor_ID || d.id == appt.doctor_ID)
+                        : null;
+
+                    return {
+                        id: appt.appointment_id || appt.id,
+                        patientName: patient?.patient_name || 'Unknown Patient',
+                        patientId: appt.patient_ID || patient?.id,
+                        doctorName: doctor?.user_name || 'Unknown Doctor',
+                        doctorId: appt.doctor_ID || doctor?.user_Id,
+                        doctorEmail: doctor?.user_email,
+                        contact: patient?.contact || appt.contact || "Not provided",
+                        date: appt.appointment_date || appt.date,
+                        time: appt.appointment_time || appt.time,
+                        status: appt.appointment_status || appt.status || "Pending",
+                        checkupReport: appt.checkupReport
+                    };
+                });
+
+                setAppointments(formattedAppointments);
+            }
+
+            // Process doctors list
             const allUsers = Array.isArray(doctorsData) ? doctorsData : doctorsData.users || [];
             const doctorsList = allUsers.filter(user => {
-                // Check for role_id = 1 (doctor)
                 if (user.role_id === 1 || user.role_id === '1') return true;
-
-                // Check for role field string
                 if (user.role) {
                     const role = user.role.toString().toLowerCase();
                     return role.includes('doctor') || role === '1';
                 }
-
-                // Check for user_type
                 if (user.user_type === 'doctor' || user.type === 'doctor') return true;
-
                 return false;
             });
 
             setDoctors(doctorsList);
             setPatients(Array.isArray(patientsData) ? patientsData : []);
 
-            // const appointmentsList = Array.isArray(appointmentsData) ? appointmentsData : appointmentsData.appointments || [];
-
-            // const formattedAppointments = appointmentsList.map(appt => ({
-            //     id: appt.id,
-            //     patientName: appt.patient?.patient_name || 'Unknown Patient',
-            //     patientId: appt.patientId,
-            //     doctorName: appt.doctor?.user_name || 'Unknown Doctor',
-            //     doctorId: appt.doctorId,
-            //     doctorEmail: appt.doctor?.user_email,
-            //     contact: appt.patient?.contact || "Not provided",
-            //     date: appt.date,
-            //     time: appt.time,
-            //     status: appt.status,
-            //     checkupReport: appt.checkupReport
-            // }));
-
-            // setAppointments(formattedAppointments);
-
         } catch (error) {
-            toast.error(error.message || "Failed to load data.");
             console.error("Fetch data error:", error);
+            toast.error(error.message || "Failed to load data. Please try again.");
         } finally {
             setLoading(false);
         }
@@ -152,6 +170,87 @@ export default function Appointment() {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    const fetchAvailableSlots = useCallback(async () => {
+        if (!selectedDoctor || !selectedDate) {
+            setAvailableSlots([]);
+            setSelectedTime("");
+            return;
+        }
+
+        const day = new Date(selectedDate).getDay();
+        if (day === 0) {
+            toast.error("Appointment can't be registered for Sunday!");
+            setAvailableSlots([]);
+            setSelectedTime("");
+            return;
+        }
+
+        try {
+            const token = localStorage.getItem("token");
+
+            // 1️⃣ FETCH SCHEDULE SLOTS
+            const response = await fetch(
+                `${API_BASE_URL}/appointments/create-appointment/${selectedDoctor}`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({
+                        doc_apt_date: selectedDate,
+                    }),
+                }
+            );
+
+            if (!response.ok) {
+                setAvailableSlots([]);
+                setSelectedTime("");
+                return;
+            }
+
+            const scheduleSlots = await response.json();
+
+            // 2️⃣ FETCH BOOKED APPOINTMENTS
+            const bookedRes = await fetch(
+                `${API_BASE_URL}/appointments/show-appointments?doctor_id=${selectedDoctor}&date=${selectedDate}`,
+                {
+                    headers: { Authorization: `Bearer ${token}` },
+                }
+            );
+
+            const bookedJson = bookedRes.ok ? await bookedRes.json() : [];
+
+            // ✅ FIX: NORMALIZE BACKEND RESPONSE
+            const bookedAppointments = Array.isArray(bookedJson)
+                ? bookedJson
+                : bookedJson.appointments || bookedJson.data || [];
+
+            const bookedTimes = bookedAppointments
+                .map(a => a.appointment_time?.substring(0, 5))
+                .filter(Boolean);
+
+            // 3️⃣ FILTER AVAILABLE SLOTS
+            const normalizedSlots = Array.isArray(scheduleSlots)
+                ? scheduleSlots
+                    .map(t => t.substring(0, 5))
+                    .filter(t => !bookedTimes.includes(t))
+                : [];
+
+            setAvailableSlots(normalizedSlots);
+            setSelectedTime("");
+
+        } catch (error) {
+            console.error("Error fetching slots:", error);
+            setAvailableSlots([]);
+            setSelectedTime("");
+        }
+    }, [selectedDoctor, selectedDate]);
+
+    useEffect(() => {
+        fetchAvailableSlots();
+    }, [fetchAvailableSlots]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -162,20 +261,23 @@ export default function Appointment() {
 
         const isEditing = editIndex !== null;
 
+        // ✅ FIXED: Match backend field names exactly
         const appointmentData = {
-            patientId: parseInt(selectedPatient, 10),
-            doctorId: parseInt(selectedDoctor, 10),
-            date: selectedDate,
-            time: selectedTime,
-            status: isEditing ? appointments[editIndex].status : "Pending",
+            patient_id: parseInt(selectedPatient, 10),      // Backend expects snake_case
+            doc_id: parseInt(selectedDoctor, 10),           // Changed from doctorId to doc_id
+            doc_apt_date: selectedDate,                     // Changed from date to doc_apt_date
+            apt_time: selectedTime,                         // Changed from time to apt_time
+            apt_status: isEditing ? appointments[editIndex].status : "Pending"  // Changed from status to apt_status
         };
 
         const url = isEditing
-            ? `${API_BASE_URL}/appointments/update-appointment/${editId}`
-            : `${API_BASE_URL}/appointments/create-appointment`;
+            ? `${API_BASE_URL}/appointments/edit-appointment/${editId}`  // Note: using edit-appointment, not update-appointment
+            : `${API_BASE_URL}/appointments/save-appointment`;
 
         try {
             const token = localStorage.getItem("token");
+            console.log("Sending appointment data:", appointmentData); // Debug log
+
             const response = await fetch(url, {
                 method: "POST",
                 headers: {
@@ -186,32 +288,46 @@ export default function Appointment() {
             });
 
             const result = await response.json();
+            console.log("Backend response:", result); // Debug log
 
             if (!response.ok) {
-                // The backend sends a 409 for conflicts
                 if (response.status === 409) {
-                    setConflictAppointment(result.existingAppointment || { ...appointmentData, doctorName: doctors.find(d => d.user_Id == selectedDoctor)?.user_name, patientName: patients.find(p => p.id == selectedPatient)?.patient_name });
+                    // Handle conflict
+                    const existingAppt = result.existingAppointment || appointmentData;
+                    const doctor = doctors.find(d => d.user_Id == selectedDoctor);
+                    const patient = patients.find(p => p.id == selectedPatient);
+
+                    setConflictAppointment({
+                        ...existingAppt,
+                        doctorName: doctor?.user_name || 'Unknown Doctor',
+                        patientName: patient?.patient_name || 'Unknown Patient'
+                    });
                 }
-                throw new Error(result.message || `Failed to ${isEditing ? 'update' : 'create'} appointment.`);
+                throw new Error(result.message || result.alert || result.error || `Failed to ${isEditing ? 'update' : 'create'} appointment.`);
             }
 
-            toast.success(`Appointment ${isEditing ? 'updated' : 'created'} successfully!`);
-            fetchData();
+            toast.success(result.success || `Appointment ${isEditing ? 'updated' : 'created'} successfully!`);
+            fetchData(); // Refresh the list
             closeModal();
 
         } catch (error) {
-            toast.error(error.message);
             console.error("Submit error:", error);
+            toast.error(error.message);
         }
     };
 
     const handleDelete = async (index) => {
         const appointmentToDelete = appointments[index];
+        if (!appointmentToDelete || !appointmentToDelete.id) {
+            toast.error("Cannot delete: Invalid appointment data");
+            return;
+        }
+
         if (window.confirm(`Are you sure you want to delete the appointment for ${appointmentToDelete.patientName}?`)) {
             try {
                 const token = localStorage.getItem("token");
                 const response = await fetch(`${API_BASE_URL}/appointments/delete-appointment/${appointmentToDelete.id}`, {
-                    method: "POST", // Backend uses POST for delete
+                    method: "POST",
                     headers: {
                         "Content-Type": "application/json",
                         Authorization: `Bearer ${token}`,
@@ -221,25 +337,27 @@ export default function Appointment() {
                 const result = await response.json();
 
                 if (!response.ok) {
-                    throw new Error(result.message || "Failed to delete appointment.");
+                    throw new Error(result.message || result.alert || "Failed to delete appointment.");
                 }
 
-                toast.success("Appointment deleted successfully!");
-                fetchData();
+                toast.success(result.success || "Appointment deleted successfully!");
+                fetchData(); // Refresh the list
             } catch (error) {
-                toast.error(error.message);
                 console.error("Delete error:", error);
+                toast.error(error.message);
             }
         }
     };
 
     const handleEdit = (index) => {
         const appt = appointments[index];
-        setSelectedPatient(appt.patientId);
-        setSelectedDoctor(appt.doctorId);
-        setSelectedDate(appt.date);
-        setSelectedTime(appt.time);
-        setContact(appt.contact);
+        if (!appt) return;
+
+        setSelectedPatient(appt.patientId?.toString() || "");
+        setSelectedDoctor(appt.doctorId?.toString() || "");
+        setSelectedDate(appt.date || "");
+        setSelectedTime(appt.time || "");
+        setContact(appt.contact || "");
         setEditIndex(index);
         setEditId(appt.id);
         setShowModal(true);
@@ -247,19 +365,22 @@ export default function Appointment() {
 
     const toggleStatus = async (index) => {
         const appointmentToUpdate = appointments[index];
+        if (!appointmentToUpdate || !appointmentToUpdate.id) return;
+
         const newStatus = appointmentToUpdate.status === "Pending" ? "Checked" : "Pending";
 
+        // ✅ FIXED: Use backend field names
         const updateData = {
-            patientId: appointmentToUpdate.patientId,
-            doctorId: appointmentToUpdate.doctorId,
-            date: appointmentToUpdate.date,
-            time: appointmentToUpdate.time,
-            status: newStatus,
+            patient_id: appointmentToUpdate.patientId,
+            doc_id: appointmentToUpdate.doctorId,
+            doc_apt_date: appointmentToUpdate.date,
+            apt_time: appointmentToUpdate.time,
+            apt_status: newStatus,
         };
 
         try {
             const token = localStorage.getItem("token");
-            const response = await fetch(`${API_BASE_URL}/appointments/update-appointment/${appointmentToUpdate.id}`, {
+            const response = await fetch(`${API_BASE_URL}/appointments/edit-appointment/${appointmentToUpdate.id}`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -271,14 +392,14 @@ export default function Appointment() {
             const result = await response.json();
 
             if (!response.ok) {
-                throw new Error(result.message || "Failed to update status.");
+                throw new Error(result.message || result.alert || "Failed to update status.");
             }
 
             toast.success(`Appointment status changed to ${newStatus}`);
-            fetchData();
+            fetchData(); // Refresh the list
         } catch (error) {
-            toast.error(error.message);
             console.error("Status toggle error:", error);
+            toast.error(error.message);
         }
     };
 
@@ -290,6 +411,7 @@ export default function Appointment() {
         setSelectedDate("");
         setSelectedTime("");
         setContact("");
+        setConflictAppointment(null);
     };
 
     const openModal = () => {
@@ -305,9 +427,7 @@ export default function Appointment() {
     const totalAppointments = appointments.length;
     const pendingAppointments = appointmentStatuses(appointments, "Pending").length;
     const completedAppointments = appointmentStatuses(appointments, "Checked").length;
-    const isContactAutoFilled =
-        selectedPatient && getPatientPhone(selectedPatient) === contact;
-
+    const isContactAutoFilled = selectedPatient && getPatientPhone(selectedPatient) === contact;
     const selectedPatientPhone = selectedPatient ? getPatientPhone(selectedPatient) : "";
 
     const handleNavigation = (direction) => {
@@ -327,7 +447,6 @@ export default function Appointment() {
         if (checkupIndex === null) return;
 
         const updatedAppointments = [...appointments];
-
         updatedAppointments[checkupIndex] = {
             ...updatedAppointments[checkupIndex],
             status: "Checked",
@@ -339,12 +458,9 @@ export default function Appointment() {
         };
 
         setAppointments(updatedAppointments);
-        localStorage.setItem("appointments", JSON.stringify(updatedAppointments));
-
         setShowCheckup(false);
         setCheckupIndex(null);
     };
-
 
     return (
         <div className="appointment-page">
@@ -373,7 +489,7 @@ export default function Appointment() {
             <div className="appointment-container">
                 {loading && <div className="loading-state">Loading appointments...</div>}
 
-                {/* Conflict Card, Modal, Reschedule */}
+                {/* Conflict Card */}
                 {conflictAppointment && (
                     <div className="conflict-card">
                         <div className="conflict-header">
@@ -381,18 +497,10 @@ export default function Appointment() {
                             <h4>Patient Already Scheduled</h4>
                         </div>
                         <div className="conflict-body">
-                            <p>
-                                <strong>Patient:</strong> {conflictAppointment.patientName}
-                            </p>
-                            <p>
-                                <strong>Doctor:</strong> {conflictAppointment.doctorName}
-                            </p>
-                            <p>
-                                <strong>Date:</strong> {conflictAppointment.date}
-                            </p>
-                            <p>
-                                <strong>Time:</strong> {conflictAppointment.time}
-                            </p>
+                            <p><strong>Patient:</strong> {conflictAppointment.patientName}</p>
+                            <p><strong>Doctor:</strong> {conflictAppointment.doctorName}</p>
+                            <p><strong>Date:</strong> {conflictAppointment.date}</p>
+                            <p><strong>Time:</strong> {conflictAppointment.time}</p>
                         </div>
                         <div className="conflict-actions">
                             <button
@@ -419,6 +527,7 @@ export default function Appointment() {
                     </div>
                 )}
 
+                {/* Main Modal */}
                 <Modal
                     ModalLabel={ModalLabel}
                     showModal={showModal}
@@ -433,6 +542,7 @@ export default function Appointment() {
                     selectedDate={selectedDate}
                     selectedTime={selectedTime}
                     contact={contact}
+                    availableSlots={availableSlots}
                     setSelectedDoctor={setSelectedDoctor}
                     setSelectedDate={setSelectedDate}
                     setSelectedTime={setSelectedTime}
@@ -446,6 +556,7 @@ export default function Appointment() {
                     }}
                 />
 
+                {/* Reschedule Modal */}
                 <Reschedule
                     show={showReschedule}
                     onClick={onCloseHandler}
@@ -454,6 +565,7 @@ export default function Appointment() {
                     setAppointments={setAppointments}
                 />
 
+                {/* Checkup Modal */}
                 {showCheckup && checkupIndex !== null && (
                     <CheckupModalV2
                         show={showCheckup}
@@ -466,17 +578,7 @@ export default function Appointment() {
                     />
                 )}
 
-                {/* <CheckupModal
-                    show={showCheckup}
-                    appointment={appointments[checkupIndex]}
-                    onClose={() => {
-                        setShowCheckup(false);
-                        setCheckupIndex(null);
-                    }}
-                    onSubmit={handleCheckupSubmit}
-                /> */}
-
-
+                {/* Main Content */}
                 {!loading && !showModal && !showCheckup && (
                     <div className="appointment-main-content">
                         <div className="appointment-list-header">
@@ -529,13 +631,7 @@ export default function Appointment() {
                                                 </td>
                                                 <td>{appt.patientName}</td>
                                                 <td>{appt.doctorName}</td>
-                                                <td
-                                                    className={
-                                                        !appt.contact || appt.contact === "Not provided"
-                                                            ? "no-contact"
-                                                            : ""
-                                                    }
-                                                >
+                                                <td className={!appt.contact || appt.contact === "Not provided" ? "no-contact" : ""}>
                                                     {appt.contact || "No contact"}
                                                 </td>
                                                 <td>{appt.date}</td>
@@ -580,7 +676,6 @@ export default function Appointment() {
                                                     >
                                                         <Icon icon="mdi:clipboard-check-outline" />
                                                     </button>
-
                                                 </td>
                                             </tr>
                                         ))}

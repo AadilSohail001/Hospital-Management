@@ -16,6 +16,7 @@ export default function Modal({
     selectedDate,
     selectedTime,
     contact,
+    availableSlots = [],
     setSelectedPatient,
     setSelectedDoctor,
     setSelectedDate,
@@ -36,8 +37,8 @@ export default function Modal({
     }));
 
     const doctorOptions = doctors.map(d => ({
-        value: d.user_Id || d.id,
-        label: `ID: ${d.user_Id || d.id} - ${d.user_name || d.name} (${d.specialization || d.speciality || "General"})`
+        value: d.id || d.user_Id,
+        label: `ID: ${d.id || d.user_Id} - ${d.user_name || d.name} (${d.specialization || d.speciality || "General"})`
     }));
 
     const handlePatientSelectChange = (selectedOption) => {
@@ -52,6 +53,15 @@ export default function Modal({
             setContact("");
         }
     };
+
+    const timeOptions = availableSlots.map(slot => ({
+        value: slot,
+        label: slot
+    }));
+
+    if (isEditMode && selectedTime && !timeOptions.some(o => o.value === selectedTime)) {
+        timeOptions.unshift({ value: selectedTime, label: selectedTime });
+    }
 
     return (
         <div className="modal-overlay" onClick={closeModal}>
@@ -141,12 +151,13 @@ export default function Modal({
                         {/* Time */}
                         <div className="form-group">
                             <label><Icon icon="mdi:clock" /> Select Time</label>
-                            <input
-                                type="time"
-                                value={selectedTime}
-                                onChange={(e) => setSelectedTime(e.target.value)}
-                                required
-                                disabled={isEditMode} // locked in edit mode
+                            <Select
+                                options={timeOptions}
+                                value={timeOptions.find(opt => opt.value === selectedTime) || null}
+                                onChange={(option) => setSelectedTime(option ? option.value : "")}
+                                placeholder="Select Time Slot"
+                                isDisabled={!selectedDate || !selectedDoctor}
+                                isClearable
                             />
                         </div>
                     </div>

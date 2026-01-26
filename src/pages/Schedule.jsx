@@ -199,9 +199,11 @@ export default function Schedule() {
     };
 
     const handleUpdateRow = (index, field, value) => {
-        const updated = [...scheduleRows];
-        updated[index] = { ...updated[index], [field]: value };
-        setScheduleRows(updated);
+        setScheduleRows(prev => {
+            const updated = [...prev];
+            updated[index] = { ...updated[index], [field]: value };
+            return updated;
+        });
     };
 
     const handleScheduleClick = async (rowIndex) => {
