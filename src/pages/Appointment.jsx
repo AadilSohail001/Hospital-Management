@@ -103,23 +103,31 @@ export default function Appointment() {
                     const appointmentDate = new Date(appt.date);
                     if (isNaN(appointmentDate.getTime())) return false;
 
+                    // normalize both dates to start of day
                     appointmentDate.setHours(0, 0, 0, 0);
 
-                    const timeDiff = today.getTime() - appointmentDate.getTime();
-                    const dayDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
-
+                    // compute end date based on selected filter (inclusive)
+                    let endDate = new Date(today.getTime());
                     switch (dateFilter) {
                         case "today":
-                            return dayDiff === 0;
+                            // endDate stays as today
+                            break;
                         case "2days":
-                            return dayDiff >= 0 && dayDiff <= 2;
+                            endDate = new Date(today.getTime() + 2 * 24 * 60 * 60 * 1000);
+                            break;
                         case "3days":
-                            return dayDiff >= 0 && dayDiff <= 3;
+                            endDate = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000);
+                            break;
                         case "7days":
-                            return dayDiff >= 0 && dayDiff <= 7;
+                            endDate = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+                            break;
                         default:
+                            // if unknown filter, include all
                             return true;
                     }
+
+                    // include appointments from today up to endDate (inclusive)
+                    return appointmentDate.getTime() >= today.getTime() && appointmentDate.getTime() <= endDate.getTime();
                 } catch (error) {
                     console.error("Error parsing date:", appt.date, error);
                     return false;
@@ -779,9 +787,9 @@ export default function Appointment() {
                                     >
                                         <option value="all">All Dates</option>
                                         <option value="today">Today</option>
-                                        <option value="2days">Last 2 Days</option>
-                                        <option value="3days">Last 3 Days</option>
-                                        <option value="7days">Last 7 Days</option>
+                                        <option value="2days">Next 2 Days</option>
+                                        <option value="3days">Next 3 Days</option>
+                                        <option value="7days">Next 7 Days</option>
                                     </select>
                                 </div>
 
@@ -824,9 +832,9 @@ export default function Appointment() {
                                     {searchTerm && ` matching "${searchTerm}"`}
                                     {dateFilter !== "all" &&
                                         ` from ${dateFilter === "today" ? "today" :
-                                            dateFilter === "2days" ? "last 2 days" :
-                                                dateFilter === "3days" ? "last 3 days" :
-                                                    "last 7 days"}`
+                                            dateFilter === "2days" ? "next 2 days" :
+                                                dateFilter === "3days" ? "next 3 days" :
+                                                    "next 7 days"}`
                                     }
                                     {statusFilter !== "all" && ` with status "${statusFilter}"`}
                                 </span>
