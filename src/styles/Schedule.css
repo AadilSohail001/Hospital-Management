@@ -46,7 +46,7 @@
 }
 
 .search-bar input:focus {
-    outline: none;
+    outline: grey;
     border-color: #667eea;
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
 }
@@ -122,6 +122,297 @@
     border-color: #ccc;
 }
 
+.schedule-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.schedule-container h2 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #2d3748;
+    margin-bottom: 30px;
+}
+
+/* .search-bar {
+    display: flex;
+    align-items: center;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 15px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+} */
+
+.search-bar input {
+    flex: 1;
+    border: none;
+    outline: none;
+    padding: 5px 10px;
+    font-size: 16px;
+}
+
+.doctors-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.doctor-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: center;
+}
+
+.doctor-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    border-color: #667eea;
+}
+
+.doctor-card h3 {
+    margin: 10px 0 5px;
+    color: #2d3748;
+}
+
+.doctor-card p {
+    color: #718096;
+    font-size: 14px;
+}
+
+.schedule-header-actions {
+    margin-bottom: 20px;
+}
+
+.back-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #4a5568;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.back-btn:hover {
+    background: #2d3748;
+}
+
+.selected-doctor-info {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    border-left: 4px solid #667eea;
+    margin-bottom: 20px;
+}
+
+.selected-doctor-info h3 {
+    margin: 0;
+    color: #2d3748;
+}
+
+.selected-doctor-info p {
+    margin: 5px 0 0;
+    color: #718096;
+}
+
+.schedule-controls {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    margin-bottom: 1.5rem;
+}
+
+.control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 150px;
+}
+
+.control-group label {
+    font-weight: 500;
+    color: #4a5568;
+    font-size: 14px;
+}
+
+.control-group input,
+.control-group select {
+    padding: 8px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.control-group input:focus,
+.control-group select:focus {
+    border-color: #667eea;
+}
+
+.control-group input:disabled,
+.control-group select:disabled {
+    background: #f7fafc;
+    cursor: not-allowed;
+}
+
+.schedule-day-selector {
+    display: flex;
+    gap: 1rem;
+    margin: 1.5rem 0;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    flex-wrap: wrap;
+}
+
+.day-checkbox-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.day-checkbox-group input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+.day-checkbox-group label {
+    cursor: pointer;
+    user-select: none;
+}
+
+.schedule-action-buttons {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+}
+
+.schedule-btn,
+.edit-btn,
+.delete-btn,
+.cancel-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.schedule-btn {
+    background: #48bb78;
+    color: white;
+}
+
+.schedule-btn:hover {
+    background: #38a169;
+}
+
+.edit-btn {
+    background: #4299e1;
+    color: white;
+}
+
+.edit-btn:hover {
+    background: #3182ce;
+}
+
+.delete-btn {
+    background: #f56565;
+    color: white;
+}
+
+.delete-btn:hover {
+    background: #e53e3e;
+}
+
+.cancel-btn {
+    background: #a0aec0;
+    color: white;
+}
+
+.cancel-btn:hover {
+    background: #718096;
+}
+
+.schedule-btn:disabled,
+.edit-btn:disabled,
+.delete-btn:disabled,
+.cancel-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.8);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid #e2e8f0;
+    border-top-color: #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.existing-schedules {
+    margin-bottom: 20px;
+}
+
+.existing-schedules h4 {
+    color: #4a5568;
+    margin-bottom: 10px;
+}
+
+.schedule-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 15px;
+    margin-bottom: 10px;
+}
+
+.schedule-card p {
+    margin: 5px 0;
+    color: #4a5568;
+}
+
 .add-row-btn {
     padding: 10px 14px;
     background-color: #667eea;
@@ -189,7 +480,8 @@
 }
 
 .control-group select,
-.control-group input[type="time"] {
+.control-group input[type="time"],
+.control-group input[type="date"] {
     padding: 10px 14px;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
@@ -206,7 +498,8 @@
 }
 
 .control-group select:focus,
-.control-group input[type="time"]:focus {
+.control-group input[type="time"]:focus,
+.control-group input[type="date"]:focus {
     outline: none;
     border-color: #667eea;
     background-color: #fff;

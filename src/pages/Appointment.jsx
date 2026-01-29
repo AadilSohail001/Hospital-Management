@@ -18,6 +18,7 @@ export default function Appointment() {
     const [doctors, setDoctors] = useState([]);
     const [patients, setPatients] = useState([]);
     const [appointments, setAppointments] = useState([]);
+    const [filteredAppointments, setFilteredAppointments] = useState([]);
     const [loading, setLoading] = useState(true);
 
     const [editIndex, setEditIndex] = useState(null);
@@ -40,16 +41,22 @@ export default function Appointment() {
     const [showCheckup, setShowCheckup] = useState(false);
     const [checkupIndex, setCheckupIndex] = useState(null);
 
+    // Search and Filter states
+    const [searchTerm, setSearchTerm] = useState("");
+    const [dateFilter, setDateFilter] = useState("all");
+    const [statusFilter, setStatusFilter] = useState("all");
+
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
     const recordsPerPage = 3;
     const lastIndex = currentPage * recordsPerPage;
     const firstIndex = lastIndex - recordsPerPage;
-    const paginatedAppointments = Array.isArray(appointments)
-        ? appointments.slice(firstIndex, lastIndex)
+
+    const paginatedAppointments = Array.isArray(filteredAppointments)
+        ? filteredAppointments.slice(firstIndex, lastIndex)
         : [];
 
-    const totalPages = Math.ceil(appointments.length / recordsPerPage);
+    const totalPages = Math.ceil(filteredAppointments.length / recordsPerPage);
 
     const getPatientPhone = useCallback(
         (patientId) => {
@@ -59,6 +66,75 @@ export default function Appointment() {
         },
         [patients]
     );
+
+    // Function to filter appointments based on search and date filter
+    const filterAppointments = useCallback(() => {
+        let filtered = [...appointments];
+
+        // Apply search filter
+        if (searchTerm.trim()) {
+            const term = searchTerm.toLowerCase().trim();
+            filtered = filtered.filter(appt => {
+                const patientName = String(appt.patientName || '').toLowerCase();
+                const doctorName = String(appt.doctorName || '').toLowerCase();
+                const contact = String(appt.contact || '').toLowerCase();
+                const status = String(appt.status || '').toLowerCase();
+                const date = String(appt.date || '');
+                const time = String(appt.time || '');
+
+                return patientName.includes(term) ||
+                    doctorName.includes(term) ||
+                    contact.includes(term) ||
+                    date.includes(term) ||
+                    time.includes(term) ||
+                    status.includes(term);
+            });
+        }
+
+        // Apply date filter
+        if (dateFilter !== "all") {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            filtered = filtered.filter(appt => {
+                try {
+                    if (!appt.date) return false;
+
+                    const appointmentDate = new Date(appt.date);
+                    if (isNaN(appointmentDate.getTime())) return false;
+
+                    appointmentDate.setHours(0, 0, 0, 0);
+
+                    const timeDiff = today.getTime() - appointmentDate.getTime();
+                    const dayDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+
+                    switch (dateFilter) {
+                        case "today":
+                            return dayDiff === 0;
+                        case "2days":
+                            return dayDiff >= 0 && dayDiff <= 2;
+                        case "3days":
+                            return dayDiff >= 0 && dayDiff <= 3;
+                        case "7days":
+                            return dayDiff >= 0 && dayDiff <= 7;
+                        default:
+                            return true;
+                    }
+                } catch (error) {
+                    console.error("Error parsing date:", appt.date, error);
+                    return false;
+                }
+            });
+        }
+
+        // Apply status filter
+        if (statusFilter !== "all") {
+            filtered = filtered.filter(appt => appt.status === statusFilter);
+        }
+
+        setFilteredAppointments(filtered);
+        setCurrentPage(1);
+    }, [appointments, searchTerm, dateFilter, statusFilter]);
 
     // Load data on mount safely
     const fetchData = useCallback(async () => {
@@ -76,76 +152,112 @@ export default function Appointment() {
                 Authorization: `Bearer ${token}`,
             };
 
+            // Check token expiration
+            try {
+                const tokenPayload = JSON.parse(atob(token.split('.')[1]));
+                const tokenExp = tokenPayload.exp * 1000;
+                if (Date.now() >= tokenExp) {
+                    toast.error("Your session has expired. Please log in again.");
+                    localStorage.removeItem("token");
+                    window.location.href = "/login";
+                    return;
+                }
+            } catch (tokenError) {
+                console.warn("Token parsing error:", tokenError);
+            }
+
             // Fetch doctors
-            const doctorsRes = await fetch(`${API_BASE_URL}/users/show-all-doctors`, {
-                method: "GET",
-                headers,
-            });
-
-            if (!doctorsRes.ok) {
-                throw new Error(`Failed to fetch doctors: ${doctorsRes.status}`);
-            }
-            const doctorsData = await doctorsRes.json();
-
-            // Fetch patients
-            const patientsRes = await fetch(`${API_BASE_URL}/patients/show-patients`, {
-                method: "GET",
-                headers,
-            });
-
-            if (!patientsRes.ok) {
-                throw new Error(`Failed to fetch patients: ${patientsRes.status}`);
-            }
-            const patientsData = await patientsRes.json();
-
-            // ✅ FIXED: Fetch appointments from backend
-            const appointmentsRes = await fetch(`${API_BASE_URL}/appointments/show-appointments`, {
-                method: "GET",
-                headers,
-            });
-
-            if (!appointmentsRes.ok) {
-                console.warn("Could not fetch appointments, continuing with empty list");
-                setAppointments([]);
-            } else {
-                const appointmentsData = await appointmentsRes.json();
-
-                // ✅ FIXED: Handle backend response structure
-                const appointmentsList = Array.isArray(appointmentsData)
-                    ? appointmentsData
-                    : appointmentsData.appointments || appointmentsData.data || [];
-
-                // ✅ FIXED: Format appointments to match frontend structure
-                const formattedAppointments = appointmentsList.map(appt => {
-                    // Find patient and doctor details
-                    const patient = Array.isArray(patientsData)
-                        ? patientsData.find(p => p.id == appt.patient_ID || p.patient_id == appt.patient_ID)
-                        : null;
-
-                    const doctor = Array.isArray(doctorsData) || Array.isArray(doctorsData?.users)
-                        ? (doctorsData.users || doctorsData).find(d => d.user_Id == appt.doctor_ID || d.id == appt.doctor_ID)
-                        : null;
-
-                    return {
-                        id: appt.appointment_id || appt.id,
-                        patientName: patient?.patient_name || 'Unknown Patient',
-                        patientId: appt.patient_ID || patient?.id,
-                        doctorName: doctor?.user_name || 'Unknown Doctor',
-                        doctorId: appt.doctor_ID || doctor?.user_Id,
-                        doctorEmail: doctor?.user_email,
-                        contact: patient?.contact || appt.contact || "Not provided",
-                        date: appt.appointment_date || appt.date,
-                        time: appt.appointment_time || appt.time,
-                        status: appt.appointment_status || appt.status || "Pending",
-                        checkupReport: appt.checkupReport
-                    };
+            let doctorsData = [];
+            try {
+                const doctorsRes = await fetch(`${API_BASE_URL}/users/show-all-doctors`, {
+                    method: "GET",
+                    headers,
                 });
 
-                setAppointments(formattedAppointments);
+                if (doctorsRes.status === 401) {
+                    toast.error("Please log in again");
+                    localStorage.removeItem("token");
+                    window.location.href = "/login";
+                    return;
+                }
+
+                if (doctorsRes.ok) {
+                    const response = await doctorsRes.json();
+                    doctorsData = response.users || response.data || response || [];
+                } else {
+                    console.warn("Failed to fetch doctors:", doctorsRes.status);
+                }
+            } catch (doctorError) {
+                console.warn("Could not fetch doctors:", doctorError);
             }
 
+            // Fetch patients
+            let patientsData = [];
+            try {
+                const patientsRes = await fetch(`${API_BASE_URL}/patients/show-patients`, {
+                    method: "GET",
+                    headers,
+                });
+
+                if (patientsRes.ok) {
+                    const response = await patientsRes.json();
+                    patientsData = response.patients || response.data || response || [];
+                } else {
+                    console.warn("Failed to fetch patients:", patientsRes.status);
+                }
+            } catch (patientError) {
+                console.warn("Could not fetch patients:", patientError);
+            }
+
+            // Fetch appointments
+            let appointmentsList = [];
+            try {
+                const appointmentsRes = await fetch(`${API_BASE_URL}/appointments/show-appointments`, {
+                    method: "GET",
+                    headers,
+                });
+
+                if (appointmentsRes.ok) {
+                    const appointmentsData = await appointmentsRes.json();
+                    appointmentsList = Array.isArray(appointmentsData)
+                        ? appointmentsData
+                        : appointmentsData.appointments || appointmentsData.data || [];
+                } else {
+                    console.warn("Could not fetch appointments:", appointmentsRes.status);
+                }
+            } catch (appointmentError) {
+                console.warn("Error fetching appointments:", appointmentError);
+            }
+
+            // Format appointments
+            const formattedAppointments = appointmentsList.map(appt => {
+                const patient = Array.isArray(patientsData)
+                    ? patientsData.find(p => p.id == appt.patient_ID || p.patient_id == appt.patient_ID)
+                    : null;
+
+                const doctor = Array.isArray(doctorsData)
+                    ? doctorsData.find(d => d.user_Id == appt.doctor_ID || d.id == appt.doctor_ID)
+                    : null;
+
+                return {
+                    id: appt.appointment_id || appt.id,
+                    patientName: String(patient?.patient_name || patient?.name || 'Unknown Patient'),
+                    patientId: appt.patient_ID || patient?.id,
+                    doctorName: String(doctor?.user_name || doctor?.name || 'Unknown Doctor'),
+                    doctorId: appt.doctor_ID || doctor?.user_Id || doctor?.id,
+                    contact: String(patient?.contact || appt.contact || "Not provided"),
+                    date: appt.appointment_date || appt.date,
+                    time: appt.appointment_time || appt.time,
+                    status: String(appt.appointment_status || appt.status || "Pending"),
+                    checkupReport: appt.checkupReport
+                };
+            });
+
+            setAppointments(formattedAppointments);
+            setFilteredAppointments(formattedAppointments);
+
             // Process doctors list
-            const allUsers = Array.isArray(doctorsData) ? doctorsData : doctorsData.users || [];
+            const allUsers = Array.isArray(doctorsData) ? doctorsData : [];
             const doctorsList = allUsers.filter(user => {
                 if (user.role_id === 1 || user.role_id === '1') return true;
                 if (user.role) {
@@ -160,8 +272,9 @@ export default function Appointment() {
             setPatients(Array.isArray(patientsData) ? patientsData : []);
 
         } catch (error) {
-            console.error("Fetch data error:", error);
-            toast.error(error.message || "Failed to load data. Please try again.");
+            if (!error.message.includes("Failed to fetch")) {
+                toast.error("Failed to load data. Please try again.");
+            }
         } finally {
             setLoading(false);
         }
@@ -171,6 +284,12 @@ export default function Appointment() {
         fetchData();
     }, [fetchData]);
 
+    // Apply filters whenever search term or date filter changes
+    useEffect(() => {
+        filterAppointments();
+    }, [filterAppointments]);
+
+    // Fetch available slots function - normalize backend response and format times to HH:MM
     const fetchAvailableSlots = useCallback(async () => {
         if (!selectedDoctor || !selectedDate) {
             setAvailableSlots([]);
@@ -178,9 +297,13 @@ export default function Appointment() {
             return;
         }
 
-        const day = new Date(selectedDate).getDay();
-        if (day === 0) {
-            toast.error("Appointment can't be registered for Sunday!");
+        // Client-side validation for immediate feedback
+        const selectedDateObj = new Date(selectedDate);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (selectedDateObj < today) {
+            toast.error("Cannot book appointment for a past date.");
             setAvailableSlots([]);
             setSelectedTime("");
             return;
@@ -188,69 +311,78 @@ export default function Appointment() {
 
         try {
             const token = localStorage.getItem("token");
-
-            // 1️⃣ FETCH SCHEDULE SLOTS
-            const response = await fetch(
-                `${API_BASE_URL}/appointments/create-appointment/${selectedDoctor}`,
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${token}`,
-                    },
-                    body: JSON.stringify({
-                        doc_apt_date: selectedDate,
-                    }),
-                }
-            );
-
-            if (!response.ok) {
-                setAvailableSlots([]);
-                setSelectedTime("");
+            if (!token) {
+                toast.error("Please log in again.");
                 return;
             }
 
-            const scheduleSlots = await response.json();
+            const docId = parseInt(selectedDoctor, 10) || selectedDoctor;
 
-            // 2️⃣ FETCH BOOKED APPOINTMENTS
-            const bookedRes = await fetch(
-                `${API_BASE_URL}/appointments/show-appointments?doctor_id=${selectedDoctor}&date=${selectedDate}`,
-                {
-                    headers: { Authorization: `Bearer ${token}` },
+            // Use the backend endpoint to get available slots
+            const response = await fetch(`${API_BASE_URL}/appointments/create-appointment`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ doc_id: docId, doc_apt_date: selectedDate }),
+            });
+
+            if (!response.ok) {
+                if (response.status === 404) {
+                    throw new Error("API Endpoint not found (404). Please check the URL.");
                 }
-            );
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || errorData.error || `Server Error: ${response.status}`);
+            }
 
-            const bookedJson = bookedRes.ok ? await bookedRes.json() : [];
+            const raw = await response.json();
 
-            // ✅ FIX: NORMALIZE BACKEND RESPONSE
-            const bookedAppointments = Array.isArray(bookedJson)
-                ? bookedJson
-                : bookedJson.appointments || bookedJson.data || [];
+            // Backend may return array directly or an object containing the array in different keys
+            let slots = [];
+            if (Array.isArray(raw)) slots = raw;
+            else if (Array.isArray(raw.data)) slots = raw.data;
+            else if (Array.isArray(raw.slots)) slots = raw.slots;
+            else if (Array.isArray(raw.available_slots)) slots = raw.available_slots;
 
-            const bookedTimes = bookedAppointments
-                .map(a => a.appointment_time?.substring(0, 5))
-                .filter(Boolean);
+            // Normalize times to 'HH:MM' (remove seconds) and dedupe/sort
+            const normalized = slots
+                .map(s => String(s || "").trim())
+                .filter(s => s.length > 0)
+                .map(s => {
+                    // support formats like '09:00:00' or '9:00'
+                    const parts = s.split(":");
+                    if (parts.length >= 2) {
+                        const hh = parts[0].padStart(2, "0");
+                        const mm = parts[1].padStart(2, "0");
+                        return `${hh}:${mm}`;
+                    }
+                    return s;
+                });
 
-            // 3️⃣ FILTER AVAILABLE SLOTS
-            const normalizedSlots = Array.isArray(scheduleSlots)
-                ? scheduleSlots
-                    .map(t => t.substring(0, 5))
-                    .filter(t => !bookedTimes.includes(t))
-                : [];
+            const unique = Array.from(new Set(normalized)).sort();
 
-            setAvailableSlots(normalizedSlots);
+            if (unique.length > 0) {
+                setAvailableSlots(unique);
+            } else {
+                toast.info("No available slots for this date, or the doctor is not scheduled.");
+                setAvailableSlots([]);
+            }
+
             setSelectedTime("");
-
         } catch (error) {
-            console.error("Error fetching slots:", error);
+            toast.error(error.message || "An error occurred while fetching time slots.");
             setAvailableSlots([]);
             setSelectedTime("");
         }
     }, [selectedDoctor, selectedDate]);
 
     useEffect(() => {
-        fetchAvailableSlots();
-    }, [fetchAvailableSlots]);
+        if (selectedDoctor && selectedDate) {
+            setSelectedTime("");
+            fetchAvailableSlots();
+        }
+    }, [selectedDoctor, selectedDate, fetchAvailableSlots]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -261,22 +393,25 @@ export default function Appointment() {
 
         const isEditing = editIndex !== null;
 
-        // ✅ FIXED: Match backend field names exactly
+        // Format time for backend
+        const aptTime = selectedTime.includes(':') && selectedTime.length === 5
+            ? `${selectedTime}:00`
+            : selectedTime;
+
         const appointmentData = {
-            patient_id: parseInt(selectedPatient, 10),      // Backend expects snake_case
-            doc_id: parseInt(selectedDoctor, 10),           // Changed from doctorId to doc_id
-            doc_apt_date: selectedDate,                     // Changed from date to doc_apt_date
-            apt_time: selectedTime,                         // Changed from time to apt_time
-            apt_status: isEditing ? appointments[editIndex].status : "Pending"  // Changed from status to apt_status
+            patient_id: parseInt(selectedPatient, 10),
+            doc_id: parseInt(selectedDoctor, 10),
+            doc_apt_date: selectedDate,
+            apt_time: aptTime,
+            apt_status: isEditing ? appointments[editIndex].status : "Pending"
         };
 
         const url = isEditing
-            ? `${API_BASE_URL}/appointments/edit-appointment/${editId}`  // Note: using edit-appointment, not update-appointment
+            ? `${API_BASE_URL}/appointments/edit-appointment/${editId}`
             : `${API_BASE_URL}/appointments/save-appointment`;
 
         try {
             const token = localStorage.getItem("token");
-            console.log("Sending appointment data:", appointmentData); // Debug log
 
             const response = await fetch(url, {
                 method: "POST",
@@ -288,11 +423,9 @@ export default function Appointment() {
             });
 
             const result = await response.json();
-            console.log("Backend response:", result); // Debug log
 
             if (!response.ok) {
                 if (response.status === 409) {
-                    // Handle conflict
                     const existingAppt = result.existingAppointment || appointmentData;
                     const doctor = doctors.find(d => d.user_Id == selectedDoctor);
                     const patient = patients.find(p => p.id == selectedPatient);
@@ -307,17 +440,16 @@ export default function Appointment() {
             }
 
             toast.success(result.success || `Appointment ${isEditing ? 'updated' : 'created'} successfully!`);
-            fetchData(); // Refresh the list
+            fetchData();
             closeModal();
 
         } catch (error) {
-            console.error("Submit error:", error);
             toast.error(error.message);
         }
     };
 
     const handleDelete = async (index) => {
-        const appointmentToDelete = appointments[index];
+        const appointmentToDelete = filteredAppointments[index];
         if (!appointmentToDelete || !appointmentToDelete.id) {
             toast.error("Cannot delete: Invalid appointment data");
             return;
@@ -327,7 +459,7 @@ export default function Appointment() {
             try {
                 const token = localStorage.getItem("token");
                 const response = await fetch(`${API_BASE_URL}/appointments/delete-appointment/${appointmentToDelete.id}`, {
-                    method: "POST",
+                    method: "POST", // Note: DELETE method is more appropriate for deletion
                     headers: {
                         "Content-Type": "application/json",
                         Authorization: `Bearer ${token}`,
@@ -341,47 +473,59 @@ export default function Appointment() {
                 }
 
                 toast.success(result.success || "Appointment deleted successfully!");
-                fetchData(); // Refresh the list
+                fetchData();
             } catch (error) {
-                console.error("Delete error:", error);
                 toast.error(error.message);
             }
         }
     };
 
     const handleEdit = (index) => {
-        const appt = appointments[index];
+        const appt = filteredAppointments[index];
         if (!appt) return;
+
+        const originalIndex = appointments.findIndex(a => a.id === appt.id);
 
         setSelectedPatient(appt.patientId?.toString() || "");
         setSelectedDoctor(appt.doctorId?.toString() || "");
         setSelectedDate(appt.date || "");
-        setSelectedTime(appt.time || "");
+        // Normalize time to HH:MM for the time select
+        let timeVal = appt.time || "";
+        if (timeVal) {
+            const parts = String(timeVal).split(":");
+            if (parts.length >= 2) {
+                timeVal = `${parts[0].padStart(2, "0")}:${parts[1].padStart(2, "0")}`;
+            }
+        }
+        setSelectedTime(timeVal || "");
         setContact(appt.contact || "");
-        setEditIndex(index);
+        setEditIndex(originalIndex);
         setEditId(appt.id);
         setShowModal(true);
     };
 
     const toggleStatus = async (index) => {
-        const appointmentToUpdate = appointments[index];
+        const appointmentToUpdate = filteredAppointments[index];
         if (!appointmentToUpdate || !appointmentToUpdate.id) return;
 
         const newStatus = appointmentToUpdate.status === "Pending" ? "Checked" : "Pending";
 
-        // ✅ FIXED: Use backend field names
+        const aptTime = appointmentToUpdate.time.includes(':') && appointmentToUpdate.time.length === 5
+            ? `${appointmentToUpdate.time}:00`
+            : appointmentToUpdate.time;
+
         const updateData = {
             patient_id: appointmentToUpdate.patientId,
             doc_id: appointmentToUpdate.doctorId,
             doc_apt_date: appointmentToUpdate.date,
-            apt_time: appointmentToUpdate.time,
+            apt_time: aptTime,
             apt_status: newStatus,
         };
 
         try {
             const token = localStorage.getItem("token");
             const response = await fetch(`${API_BASE_URL}/appointments/edit-appointment/${appointmentToUpdate.id}`, {
-                method: "POST",
+                method: "POST", // Note: PUT or PATCH is more appropriate for updates
                 headers: {
                     "Content-Type": "application/json",
                     Authorization: `Bearer ${token}`,
@@ -396,9 +540,8 @@ export default function Appointment() {
             }
 
             toast.success(`Appointment status changed to ${newStatus}`);
-            fetchData(); // Refresh the list
+            fetchData();
         } catch (error) {
-            console.error("Status toggle error:", error);
             toast.error(error.message);
         }
     };
@@ -412,6 +555,7 @@ export default function Appointment() {
         setSelectedTime("");
         setContact("");
         setConflictAppointment(null);
+        setAvailableSlots([]);
     };
 
     const openModal = () => {
@@ -424,9 +568,9 @@ export default function Appointment() {
         setShowModal(false);
     };
 
-    const totalAppointments = appointments.length;
-    const pendingAppointments = appointmentStatuses(appointments, "Pending").length;
-    const completedAppointments = appointmentStatuses(appointments, "Checked").length;
+    const totalAppointments = filteredAppointments.length;
+    const pendingAppointments = appointmentStatuses(filteredAppointments, "Pending").length;
+    const completedAppointments = appointmentStatuses(filteredAppointments, "Checked").length;
     const isContactAutoFilled = selectedPatient && getPatientPhone(selectedPatient) === contact;
     const selectedPatientPhone = selectedPatient ? getPatientPhone(selectedPatient) : "";
 
@@ -460,6 +604,24 @@ export default function Appointment() {
         setAppointments(updatedAppointments);
         setShowCheckup(false);
         setCheckupIndex(null);
+    };
+
+    const handleSearchChange = (e) => {
+        setSearchTerm(e.target.value);
+    };
+
+    const handleDateFilterChange = (e) => {
+        setDateFilter(e.target.value);
+    };
+
+    const handleStatusFilterChange = (e) => {
+        setStatusFilter(e.target.value);
+    };
+
+    const clearFilters = () => {
+        setSearchTerm("");
+        setDateFilter("all");
+        setStatusFilter("all");
     };
 
     return (
@@ -585,24 +747,123 @@ export default function Appointment() {
                             <h2>
                                 <Icon icon="mdi:clipboard-list" /> Scheduled Appointments
                             </h2>
+
+                            <div className="search-filter-container">
+                                {/* Search Bar */}
+                                <div>
+                                    <input
+                                        type="text"
+                                        placeholder="Search appointments..."
+                                        value={searchTerm}
+                                        onChange={handleSearchChange}
+                                        className="search-input"
+                                    />
+                                    {searchTerm && (
+                                        <button
+                                            className="clear-search-btn"
+                                            onClick={() => setSearchTerm("")}
+                                            title="Clear search"
+                                        >
+                                            <Icon icon="mdi:close" />
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Date Filter */}
+                                <div className="filter-group">
+                                    <Icon icon="mdi:calendar" className="filter-icon" />
+                                    <select
+                                        value={dateFilter}
+                                        onChange={handleDateFilterChange}
+                                        className="filter-select"
+                                    >
+                                        <option value="all">All Dates</option>
+                                        <option value="today">Today</option>
+                                        <option value="2days">Last 2 Days</option>
+                                        <option value="3days">Last 3 Days</option>
+                                        <option value="7days">Last 7 Days</option>
+                                    </select>
+                                </div>
+
+                                {/* Status Filter */}
+                                <div className="filter-group">
+                                    <Icon icon="mdi:filter" className="filter-icon" />
+                                    <select
+                                        value={statusFilter}
+                                        onChange={handleStatusFilterChange}
+                                        className="filter-select"
+                                    >
+                                        <option value="all">All Status</option>
+                                        <option value="Pending">Pending</option>
+                                        <option value="Checked">Checked</option>
+                                    </select>
+                                </div>
+
+                                {/* Clear Filters Button */}
+                                {(searchTerm || dateFilter !== "all" || statusFilter !== "all") && (
+                                    <button
+                                        className="clear-filters-btn"
+                                        onClick={clearFilters}
+                                    >
+                                        <Icon icon="mdi:filter-remove" /> Clear
+                                    </button>
+                                )}
+                            </div>
+
                             <button className="add-appointment-btn" onClick={openModal}>
                                 <Icon icon="mdi:plus" /> Add Appointment
                             </button>
                         </div>
 
-                        {appointments.length === 0 ? (
+                        {/* Filter Status Info */}
+                        {(searchTerm || dateFilter !== "all" || statusFilter !== "all") && (
+                            <div className="filter-status-info">
+                                <Icon icon="mdi:filter" />
+                                <span>
+                                    Showing {filteredAppointments.length} of {appointments.length} appointments
+                                    {searchTerm && ` matching "${searchTerm}"`}
+                                    {dateFilter !== "all" &&
+                                        ` from ${dateFilter === "today" ? "today" :
+                                            dateFilter === "2days" ? "last 2 days" :
+                                                dateFilter === "3days" ? "last 3 days" :
+                                                    "last 7 days"}`
+                                    }
+                                    {statusFilter !== "all" && ` with status "${statusFilter}"`}
+                                </span>
+                            </div>
+                        )}
+
+                        {filteredAppointments.length === 0 ? (
                             <div className="empty-state">
-                                <Icon icon="mdi:calendar-remove" className="empty-icon" />
-                                <p>No appointments scheduled yet.</p>
-                                <p className="empty-subtitle">
-                                    Click "Add Appointment" to schedule your first appointment.
-                                </p>
-                                <button
-                                    className="add-appointment-btn empty-state-btn"
-                                    onClick={openModal}
-                                >
-                                    <Icon icon="mdi:calendar-plus" /> Schedule First Appointment
-                                </button>
+                                {searchTerm || dateFilter !== "all" || statusFilter !== "all" ? (
+                                    <>
+                                        <Icon icon="mdi:filter-off" className="empty-icon" />
+                                        <p>No appointments match your search criteria.</p>
+                                        <p className="empty-subtitle">
+                                            Try changing your search terms or filters.
+                                        </p>
+                                        <button
+                                            className="add-appointment-btn empty-state-btn"
+                                            onClick={clearFilters}
+                                        >
+                                            <Icon icon="mdi:filter-remove" /> Clear Filters
+                                        </button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Icon icon="mdi:calendar-remove" className="empty-icon" />
+                                        <p>No appointments scheduled yet.</p>
+                                        <p className="empty-subtitle">
+                                            Click "Add Appointment" to schedule your first appointment.
+                                        </p>
+                                        <button
+                                            className="add-appointment-btn empty-state-btn"
+                                            onClick={openModal}
+                                        >
+                                            <Icon icon="mdi:calendar-plus" /> Schedule First Appointment
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         ) : (
                             <div className="appointments-table-container">
@@ -624,7 +885,7 @@ export default function Appointment() {
                                                 <td>
                                                     <span
                                                         className={`status-cell ${appt.status.toLowerCase()}`}
-                                                        onClick={() => toggleStatus(index + firstIndex)}
+                                                        onClick={() => toggleStatus(index)}
                                                     >
                                                         {appt.status}
                                                     </span>
@@ -640,7 +901,7 @@ export default function Appointment() {
                                                     <button
                                                         type="button"
                                                         className="table-btn edit"
-                                                        onClick={() => handleEdit(index + firstIndex)}
+                                                        onClick={() => handleEdit(index)}
                                                         title="Edit"
                                                     >
                                                         <Icon icon="mdi:pencil" />
@@ -648,7 +909,7 @@ export default function Appointment() {
                                                     <button
                                                         type="button"
                                                         className="table-btn delete"
-                                                        onClick={() => handleDelete(index + firstIndex)}
+                                                        onClick={() => handleDelete(index)}
                                                         title="Delete"
                                                     >
                                                         <Icon icon="mdi:delete" />
@@ -658,7 +919,8 @@ export default function Appointment() {
                                                         className="table-btn edit"
                                                         title="Reschedule"
                                                         onClick={() => {
-                                                            setRescheduleIndex(index + firstIndex);
+                                                            const originalIndex = appointments.findIndex(a => a.id === appt.id);
+                                                            setRescheduleIndex(originalIndex);
                                                             setShowReschedule(true);
                                                         }}
                                                     >
@@ -669,7 +931,8 @@ export default function Appointment() {
                                                         className="table-btn checkup"
                                                         title="Patient Checkup"
                                                         onClick={() => {
-                                                            setCheckupIndex(index + firstIndex);
+                                                            const originalIndex = appointments.findIndex(a => a.id === appt.id);
+                                                            setCheckupIndex(originalIndex);
                                                             setShowCheckup(true);
                                                         }}
                                                         disabled={appt.status === "Checked"}

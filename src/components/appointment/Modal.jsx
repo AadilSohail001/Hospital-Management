@@ -23,12 +23,10 @@ export default function Modal({
     setSelectedTime,
     setContact,
     isContactAutoFilled,
-    selectedPatientPhone,
     onRescheduleClick
 }) {
     if (!showModal) return null;
 
-    // lock date/time if in edit mode
     const isEditMode = editIndex !== null;
 
     const patientOptions = patients.map(p => ({
@@ -54,14 +52,29 @@ export default function Modal({
         }
     };
 
+    // Time slot options
     const timeOptions = availableSlots.map(slot => ({
         value: slot,
         label: slot
     }));
 
+    // Preserve booked slot in edit mode
     if (isEditMode && selectedTime && !timeOptions.some(o => o.value === selectedTime)) {
-        timeOptions.unshift({ value: selectedTime, label: selectedTime });
+        const displayTime = selectedTime.length >= 5 ? selectedTime.substring(0, 5) : selectedTime;
+        timeOptions.unshift({
+            value: selectedTime,
+            label: `${displayTime} (Currently Booked)`
+        });
     }
+
+    const hasSlots = availableSlots.length > 0;
+    const needsDoctorAndDate = !selectedDoctor || !selectedDate;
+
+    const slotMessage = needsDoctorAndDate
+        ? "Select doctor and date first"
+        : !hasSlots
+            ? "No available slots for this date"
+            : "Select time slot";
 
     return (
         <div className="modal-overlay" onClick={closeModal}>
@@ -85,16 +98,25 @@ export default function Modal({
                                 onChange={handlePatientSelectChange}
                                 placeholder="Search by ID..."
                                 isClearable
+                                isSearchable
+                                classNamePrefix="react-select"
+                                styles={{ menu: p => ({ ...p, zIndex: 9999 }) }}
                             />
                         </div>
 
-                        {/* Patient */}
+                        {/* Patient Name */}
                         <div className="form-group">
                             <label><Icon icon="mdi:account" /> Patient Name</label>
                             <input
                                 type="text"
-                                value={patients.find(p => p.id == selectedPatient)?.patient_name || patients.find(p => p.id == selectedPatient)?.name || ""}
+                                value={
+                                    patients.find(p => p.id == selectedPatient)?.patient_name ||
+                                    patients.find(p => p.id == selectedPatient)?.name ||
+                                    ""
+                                }
                                 readOnly
+                                placeholder="Select patient first"
+                                className="readonly-input"
                             />
                         </div>
 
@@ -107,6 +129,10 @@ export default function Modal({
                                 onChange={(option) => setSelectedDoctor(option ? option.value : "")}
                                 placeholder="Select Doctor..."
                                 isClearable
+                                isSearchable
+                                isDisabled={isEditMode}
+                                classNamePrefix="react-select"
+                                styles={{ menu: p => ({ ...p, zIndex: 9999 }) }}
                             />
                         </div>
 
@@ -118,8 +144,9 @@ export default function Modal({
                                     type="text"
                                     value={contact}
                                     onChange={(e) => setContact(e.target.value)}
+                                    readOnly={isContactAutoFilled}
                                     className={isContactAutoFilled ? "auto-filled" : ""}
-                                    readOnly
+                                    placeholder="Auto-filled when patient selected"
                                 />
                                 {isContactAutoFilled && (
                                     <span className="auto-fill-badge">
@@ -127,13 +154,6 @@ export default function Modal({
                                     </span>
                                 )}
                             </div>
-
-                            {selectedPatient && !isContactAutoFilled && contact && selectedPatientPhone && (
-                                <div className="contact-warning">
-                                    <Icon icon="mdi:alert-circle" />
-                                    Differs from saved contact: {selectedPatientPhone}
-                                </div>
-                            )}
                         </div>
 
                         {/* Date */}
@@ -143,8 +163,10 @@ export default function Modal({
                                 type="date"
                                 value={selectedDate}
                                 onChange={(e) => setSelectedDate(e.target.value)}
+                                disabled={isEditMode}
+                                min={new Date().toISOString().split("T")[0]}
                                 required
-                                disabled={isEditMode} // locked in edit mode
+                                className="date-input"
                             />
                         </div>
 
@@ -155,9 +177,12 @@ export default function Modal({
                                 options={timeOptions}
                                 value={timeOptions.find(opt => opt.value === selectedTime) || null}
                                 onChange={(option) => setSelectedTime(option ? option.value : "")}
-                                placeholder="Select Time Slot"
-                                isDisabled={!selectedDate || !selectedDoctor}
+                                placeholder={slotMessage}
+                                isDisabled={!selectedDoctor || !selectedDate}
                                 isClearable
+                                classNamePrefix="react-select"
+                                noOptionsMessage={() => slotMessage}
+                                styles={{ menu: p => ({ ...p, zIndex: 9999 }) }}
                             />
                         </div>
                     </div>
@@ -167,17 +192,17 @@ export default function Modal({
                             title={isEditMode ? "Update Appointment" : "Save Appointment"}
                             type="submit"
                             icon={<Icon icon="mdi:calendar-check" />}
+                            disabled={!selectedPatient || !selectedDoctor || !selectedDate || !selectedTime}
+                            className="save-btn"
                         />
 
-                        {/* Reschedule button visible only in edit mode */}
                         {isEditMode && (
                             <button
-                                style={{ color: "white", borderRadius: "5px", border: "1px solid #5564d8", padding: "10px 15px", backgroundColor: "#6a77d6ff", cursor: "pointer", fontWeight: "500", display: "flex", alignItems: "center", gap: "5px" }}
                                 type="button"
                                 className="reschedule-btn"
                                 onClick={onRescheduleClick}
                             >
-                                Reschedule
+                                <Icon icon="mdi:calendar-clock" /> Reschedule
                             </button>
                         )}
 

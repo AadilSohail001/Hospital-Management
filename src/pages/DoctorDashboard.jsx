@@ -38,7 +38,8 @@ export default function DoctorDashboard() {
                 } catch (err) {
                     console.warn("Failed to fetch specializations", err);
                 }
-                // 2. Fetch Doctor Profile
+
+                // 3. Fetch Doctor Profile
                 let currentDoctor = null;
                 try {
                     const docRes = await fetch(`${API_BASE_URL}/users/show-all-doctors`, {
@@ -81,31 +82,27 @@ export default function DoctorDashboard() {
                     specialization: specName || "General"
                 });
 
-                // 3. Fetch Appointments
+                // 4. Fetch Appointments
                 try {
-                    const apptRes = await fetch(`${API_BASE_URL}/appointments/show-appointments`, {
+                    const apptRes = await fetch(`${API_BASE_URL}/appointments/show-appointments?doctor_id=${currentDoctor.user_Id || currentDoctor.id}`, {
                         headers: { "Authorization": `Bearer ${token}` }
                     });
 
                     if (apptRes.ok) {
                         const apptData = await apptRes.json();
-                        const allAppts = Array.isArray(apptData) ? apptData : apptData.appointments || [];
-
-                        // Filter appointments for this doctor
-                        const myAppts = allAppts.filter(a =>
-                            a.doctor_id === currentDoctor.user_Id ||
-                            a.doctorId === currentDoctor.user_Id
-                        );
+                        const myAppts = Array.isArray(apptData) ? apptData : apptData.appointments || [];
 
                         // Map to display format
-                        const formattedAppts = myAppts.map(a => ({
-                            id: a.id || a.appointment_id,
-                            patientName: a.patient_name || a.patientName || "Unknown",
-                            contact: a.contact || a.patient_contact || "N/A",
-                            date: a.date || a.appointment_date,
-                            time: a.time || a.appointment_time,
-                            status: a.status || "Pending"
-                        }));
+                        const formattedAppts = myAppts.map(a => {
+                            return {
+                                id: a.id || a.appointment_id,
+                                patientName: a.patient_name || a.patientName || "Unknown",
+                                contact: a.contact || a.patient_contact || "N/A",
+                                date: a.appointment_date || a.date,
+                                time: a.appointment_time || a.time,
+                                status: a.appointment_status || a.status || "Pending"
+                            };
+                        });
 
                         setAppointments(formattedAppts);
                     }

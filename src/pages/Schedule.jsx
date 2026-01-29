@@ -6,6 +6,35 @@ import "../styles/Schedule.css";
 
 const API_BASE_URL = "http://localhost:8080/hospital";
 
+const initialScheduleState = {
+    id: null,
+    isScheduled: false,
+    fromTime: "09:00",
+    toTime: "17:00",
+    fromDate: "",
+    toDate: "",
+    duration: "30",
+    days: {
+        Monday: false,
+        Tuesday: false,
+        Wednesday: false,
+        Thursday: false,
+        Friday: false,
+        Saturday: false,
+        Sunday: false,
+    },
+};
+
+const dayMapping = {
+    "Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4,
+    "Friday": 5, "Saturday": 6, "Sunday": 7
+};
+
+const reverseDayMapping = {
+    1: "Monday", 2: "Tuesday", 3: "Wednesday", 4: "Thursday",
+    5: "Friday", 6: "Saturday", 7: "Sunday"
+};
+
 export default function Schedule() {
     const [doctors, setDoctors] = useState([]);
     const [filteredDoctors, setFilteredDoctors] = useState([]);
@@ -13,40 +42,30 @@ export default function Schedule() {
     const [specialities, setSpecialities] = useState([]);
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedDoctor, setSelectedDoctor] = useState(null);
-
-    const [scheduleDays, setScheduleDays] = useState([]);
-    const [scheduleRows, setScheduleRows] = useState([{
-        dayIndex: -1,
-        from: "09:00",
-        to: "17:00",
-        duration: "30",
-        isScheduled: false
-    }]);
+    const [schedule, setSchedule] = useState(initialScheduleState);
+    const [isEditing, setIsEditing] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [existingSchedules, setExistingSchedules] = useState([]);
 
     useEffect(() => {
         fetchDoctors();
-        fetchScheduleDays();
         fetchSpecialities();
     }, []);
 
     useEffect(() => {
         const doctorId = searchParams.get("doctorId");
         if (doctorId && doctors.length > 0) {
-            const doc = doctors.find(d => d.id == doctorId);
+            const doc = doctors.find(d => (d.id || d.user_Id) == doctorId);
             if (doc) {
                 setSelectedDoctor(doc);
+                fetchDoctorSchedule(doc.id || doc.user_Id);
             }
         } else if (!doctorId) {
             setSelectedDoctor(null);
+            setSchedule(initialScheduleState);
+            setExistingSchedules([]);
         }
     }, [doctors, searchParams]);
-
-    useEffect(() => {
-        if (selectedDoctor && scheduleDays.length > 0) {
-            fetchDoctorTimetable(selectedDoctor.id);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedDoctor, scheduleDays]);
 
     const fetchDoctors = async () => {
         try {
@@ -76,26 +95,7 @@ export default function Schedule() {
             }
         } catch (err) {
             console.error("Failed to fetch doctors", err);
-        }
-    };
-
-    const fetchScheduleDays = async () => {
-        try {
-            const token = localStorage.getItem("token");
-            const res = await fetch(
-                `${API_BASE_URL}/schedule-doctors/show-days`,
-                {
-                    headers: { Authorization: `Bearer ${token}` }
-                }
-            );
-
-            if (res.ok) {
-                const data = await res.json();
-                setScheduleDays(data);
-            }
-            // eslint-disable-next-line no-unused-vars
-        } catch (err) {
-            toast.error("Failed to load schedule days");
+            toast.error("Failed to load doctors");
         }
     };
 
@@ -118,8 +118,9 @@ export default function Schedule() {
         }
     };
 
-    const fetchDoctorTimetable = async (doctorId) => {
+    const fetchDoctorSchedule = async (doctorId) => {
         try {
+            setIsLoading(true);
             const token = localStorage.getItem("token");
             const res = await fetch(
                 `${API_BASE_URL}/schedule-doctors/show-doctor-timetable/${doctorId}`,
@@ -130,26 +131,42 @@ export default function Schedule() {
 
             if (res.ok) {
                 const data = await res.json();
-                if (Array.isArray(data) && data.length > 0) {
-                    const rows = data.map(item => {
-                        const dIndex = scheduleDays.findIndex(d => d.id === item.doctor_day_ID);
-                        return {
-                            id: item.id,
-                            dayIndex: dIndex !== -1 ? dIndex : -1,
-                            from: item.doctor_from_time ? item.doctor_from_time.toString().substring(0, 5) : "09:00",
-                            to: item.doctor_to_time ? item.doctor_to_time.toString().substring(0, 5) : "17:00",
-                            duration: item.doc_slot_dur ? String(item.doc_slot_dur) : "30",
-                            isScheduled: true
-                        };
+                setExistingSchedules(data);
+
+                if (data && data.length > 0) {
+                    const firstSchedule = data[0];
+                    const daysArray = firstSchedule.days ? firstSchedule.days.split(',') : [];
+
+                    const daysObj = { ...initialScheduleState.days };
+                    daysArray.forEach(day => {
+                        const dayName = reverseDayMapping[day] || day;
+                        if (dayName in daysObj) {
+                            daysObj[dayName] = true;
+                        }
                     });
-                    const validRows = rows.filter(r => r.dayIndex !== -1);
-                    setScheduleRows(validRows.length > 0 ? validRows : [{ dayIndex: -1, from: "09:00", to: "17:00", duration: "30", isScheduled: false }]);
+
+                    setSchedule({
+                        id: firstSchedule.id,
+                        isScheduled: true,
+                        fromTime: firstSchedule.doctor_from_time?.substring(0, 5) || "09:00",
+                        toTime: firstSchedule.doctor_to_time?.substring(0, 5) || "17:00",
+                        fromDate: firstSchedule.doc_from_date || "",
+                        toDate: firstSchedule.doc_to_date || "",
+                        duration: firstSchedule.doc_slot_dur?.toString() || "30",
+                        days: daysObj,
+                    });
                 } else {
-                    setScheduleRows([{ dayIndex: -1, from: "09:00", to: "17:00", duration: "30", isScheduled: false }]);
+                    setSchedule(initialScheduleState);
                 }
+            } else {
+                setSchedule(initialScheduleState);
             }
-        } catch (err) {
-            console.error("Failed to fetch timetable", err);
+        } catch (error) {
+            console.error("Failed to fetch schedule", error);
+            toast.error("Failed to load schedule");
+            setSchedule(initialScheduleState);
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -175,124 +192,187 @@ export default function Schedule() {
         );
     };
 
-    const handleAddRow = () => {
-        if (scheduleRows.length >= 6) {
-            toast.info("Maximum schedule days reached.");
-            return;
-        }
+    const handleScheduleChange = (field, value) => {
+        setSchedule(prev => ({ ...prev, [field]: value }));
+    };
 
-        const usedDayIndices = new Set(scheduleRows.map(row => row.dayIndex).filter(index => index !== -1));
-        let nextDayIndex = -1;
-
-        if (scheduleDays.length > 0) {
-            for (let i = 0; i < scheduleDays.length; i++) {
-                if (!usedDayIndices.has(i)) {
-                    nextDayIndex = i;
-                    break;
-                }
+    const handleDayChange = (day) => {
+        setSchedule(prev => ({
+            ...prev,
+            days: {
+                ...prev.days,
+                [day]: !prev.days[day]
             }
+        }));
+    };
+
+    const handleScheduleAction = async () => {
+        if (!schedule.fromDate || !schedule.toDate) {
+            toast.error("Please select both 'From Date' and 'To Date'.");
+            return;
         }
-
-        setScheduleRows(prev => {
-            return [...prev, { dayIndex: nextDayIndex, from: "09:00", to: "17:00", duration: "30", isScheduled: false }];
-        });
-    };
-
-    const handleUpdateRow = (index, field, value) => {
-        setScheduleRows(prev => {
-            const updated = [...prev];
-            updated[index] = { ...updated[index], [field]: value };
-            return updated;
-        });
-    };
-
-    const handleScheduleClick = async (rowIndex) => {
-        const row = scheduleRows[rowIndex];
-        if (row.dayIndex === -1) {
-            toast.error("Please select a day first");
+        if (new Date(schedule.toDate) < new Date(schedule.fromDate)) {
+            toast.error("'To Date' cannot be earlier than 'From Date'.");
+            return;
+        }
+        const selectedDaysCount = Object.values(schedule.days).filter(Boolean).length;
+        if (selectedDaysCount === 0) {
+            toast.error("Please select at least one day of the week.");
             return;
         }
 
-        const dayObj = scheduleDays[row.dayIndex];
-        const payload = {
-            docID: selectedDoctor.id,
-            dayID: dayObj.id,
-            from_time: row.from,
-            to_time: row.to,
-            slot_duration: row.duration
+        const docDays = Object.keys(schedule.days)
+            .filter(day => schedule.days[day])
+            .map(day => dayMapping[day]);
+
+        const doctorID = selectedDoctor.doctor_ID || selectedDoctor.doctor_id ||
+            selectedDoctor.doctorId || selectedDoctor.id || selectedDoctor.user_Id;
+
+        const formatTimeForBackend = (timeStr) => {
+            if (!timeStr) return timeStr;
+            const [hours, minutes] = timeStr.split(':');
+            const hourNum = parseInt(hours, 10);
+            return `${hourNum}:${minutes}`;
         };
 
-        try {
-            const token = localStorage.getItem("token");
-            let url = `${API_BASE_URL}/schedule-doctors/save-doctor-timetable`;
-            if (row.id) {
-                url = `${API_BASE_URL}/schedule-doctors/edit-doctor-timetable/${row.id}`;
-            }
+        const payload = {
+            docID: parseInt(doctorID, 10),
+            doc_days: docDays,
+            from_time: formatTimeForBackend(schedule.fromTime),
+            to_time: formatTimeForBackend(schedule.toTime),
+            from_date: schedule.fromDate,
+            to_date: schedule.toDate,
+            slot_duration: parseInt(schedule.duration, 10)
+        };
 
-            const res = await fetch(url, {
+        if (schedule.id) {
+            payload.sch_ID = schedule.id;
+        }
+
+        try {
+            setIsLoading(true);
+            const token = localStorage.getItem("token");
+            const endpoint = schedule.id
+                ? `${API_BASE_URL}/schedule-doctors/edit-doctor-timetable`
+                : `${API_BASE_URL}/schedule-doctors/save-doctor-timetable`;
+
+            const res = await fetch(endpoint, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`
+                    "Authorization": `Bearer ${token}`
                 },
                 body: JSON.stringify(payload)
             });
 
-            if (res.ok) {
-                const savedData = await res.json();
-                toast.success("Schedule saved successfully!");
-
-                // This is the key change: we modify the state in one go.
-                setScheduleRows(prevRows => {
-                    // 1. Mark the current row as scheduled.
-                    const updatedRows = prevRows.map((r, i) => {
-                        if (i === rowIndex) {
-                            return {
-                                ...r,
-                                id: savedData.timetable?.id || savedData.id || r.id,
-                                isScheduled: true
-                            };
-                        }
-                        return r;
-                    });
-
-                    // 2. If it was a NEW schedule (not an edit) and we have space, add a new row.
-                    if (!row.id && updatedRows.length < 6) {
-                        const usedDayIndices = new Set(updatedRows.map(r => r.dayIndex).filter(index => index !== -1));
-                        let nextDayIndex = -1;
-
-                        if (scheduleDays.length > 0) {
-                            for (let i = 0; i < scheduleDays.length; i++) {
-                                if (!usedDayIndices.has(i)) {
-                                    nextDayIndex = i;
-                                    break;
-                                }
-                            }
-                        }
-
-                        // Only add a new row if there's an available day.
-                        if (nextDayIndex !== -1) {
-                            updatedRows.push({ dayIndex: nextDayIndex, from: "09:00", to: "17:00", duration: "30", isScheduled: false });
-                        }
-                    }
-
-                    return updatedRows;
-                });
-
-            } else {
-                toast.error("Failed to save schedule");
+            const responseText = await res.text();
+            let responseData;
+            try {
+                responseData = JSON.parse(responseText);
+                // eslint-disable-next-line no-unused-vars
+            } catch (e) {
+                responseData = { message: responseText };
             }
-            // eslint-disable-next-line no-unused-vars
-        } catch (err) {
+
+            if (res.ok) {
+                const newSchedule = {
+                    ...schedule,
+                    isScheduled: true,
+                    id: schedule.id || Date.now()
+                };
+                setSchedule(newSchedule);
+                setIsEditing(false);
+
+                await fetchDoctorSchedule(doctorID);
+
+                toast.success(
+                    schedule.id
+                        ? "Schedule updated successfully!"
+                        : "Schedule created successfully!"
+                );
+            } else {
+                const errorMsg = responseData.error || responseData.message ||
+                    `Error ${res.status}: ${responseText.substring(0, 100)}`;
+                toast.error(errorMsg);
+            }
+        } catch (error) {
+            console.error("Error saving schedule:", error);
             toast.error("Error saving schedule");
+        } finally {
+            setIsLoading(false);
         }
     };
 
-    const handleEditClick = (rowIndex) => {
-        const updated = [...scheduleRows];
-        updated[rowIndex].isScheduled = false;
-        setScheduleRows(updated);
-        toast.info("You can now edit the schedule for this day.");
+    const handleEditAction = () => {
+        setIsEditing(true);
+        toast.info("You can now edit the schedule.");
+    };
+
+    const handleDeleteAction = async () => {
+        if (!schedule.id) {
+            toast.error("No schedule to delete");
+            return;
+        }
+
+        if (window.confirm("Are you sure you want to delete this schedule?")) {
+            try {
+                setIsLoading(true);
+                const token = localStorage.getItem("token");
+                const res = await fetch(
+                    `${API_BASE_URL}/schedule-doctors/delete-doctor-timetable/${schedule.id}`,
+                    {
+                        method: "POST",
+                        headers: { Authorization: `Bearer ${token}` }
+                    }
+                );
+
+                if (res.ok) {
+                    setSchedule(initialScheduleState);
+                    setIsEditing(false);
+                    const doctorID = selectedDoctor.doctor_ID || selectedDoctor.doctor_id ||
+                        selectedDoctor.doctorId || selectedDoctor.id || selectedDoctor.user_Id;
+                    await fetchDoctorSchedule(doctorID);
+                    toast.success("Schedule deleted successfully!");
+                } else {
+                    const errorData = await res.json();
+                    toast.error(errorData.message || "Failed to delete schedule");
+                }
+            } catch (error) {
+                console.error("Error deleting schedule:", error);
+                toast.error("Error deleting schedule");
+            } finally {
+                setIsLoading(false);
+            }
+        }
+    };
+
+    const handleCancelEdit = () => {
+        if (existingSchedules.length > 0) {
+            const firstSchedule = existingSchedules[0];
+            const daysArray = firstSchedule.days ? firstSchedule.days.split(',') : [];
+
+            const daysObj = { ...initialScheduleState.days };
+            daysArray.forEach(day => {
+                const dayName = reverseDayMapping[day] || day;
+                if (dayName in daysObj) {
+                    daysObj[dayName] = true;
+                }
+            });
+
+            setSchedule({
+                id: firstSchedule.id,
+                isScheduled: true,
+                fromTime: firstSchedule.doctor_from_time?.substring(0, 5) || "09:00",
+                toTime: firstSchedule.doctor_to_time?.substring(0, 5) || "17:00",
+                fromDate: firstSchedule.doc_from_date || "",
+                toDate: firstSchedule.doc_to_date || "",
+                duration: firstSchedule.doc_slot_dur?.toString() || "30",
+                days: daysObj,
+            });
+        } else {
+            setSchedule(initialScheduleState);
+        }
+        setIsEditing(false);
     };
 
     const getSpecialityName = (doc) => {
@@ -304,9 +384,7 @@ export default function Schedule() {
         return "Specialist";
     };
 
-    const scheduledDayIndices = scheduleRows
-        .filter(r => r.isScheduled && r.dayIndex !== -1)
-        .map(r => r.dayIndex);
+    const isFormDisabled = (schedule.isScheduled && !isEditing) || isLoading;
 
     return (
         <div className="schedule-container">
@@ -314,10 +392,17 @@ export default function Schedule() {
                 <Icon icon="mdi:calendar-clock" /> Doctor Schedule
             </h2>
 
+            {isLoading && (
+                <div className="loading-overlay">
+                    <div className="loading-spinner"></div>
+                    <p>Loading...</p>
+                </div>
+            )}
+
             {!selectedDoctor ? (
                 <>
                     <div className="search-bar">
-                        <Icon icon="mdi:magnify" />
+
                         <input
                             placeholder="Search Doctor"
                             value={searchTerm}
@@ -328,9 +413,9 @@ export default function Schedule() {
                     <div className="doctors-grid">
                         {filteredDoctors.map(doc => (
                             <div
-                                key={doc.user_Id}
+                                key={doc.id || doc.user_Id}
                                 className="doctor-card"
-                                onClick={() => setSearchParams({ doctorId: doc.id })}
+                                onClick={() => setSearchParams({ doctorId: doc.id || doc.user_Id })}
                             >
                                 <Icon icon="mdi:doctor" />
                                 <h3>{doc.user_name}</h3>
@@ -346,103 +431,143 @@ export default function Schedule() {
                             className="back-btn"
                             onClick={() => {
                                 setSearchParams({});
-                                setScheduleRows([{ dayIndex: -1, from: "09:00", to: "17:00", duration: "30", isScheduled: false }]);
+                                setSelectedDoctor(null);
                             }}
+                            disabled={isLoading}
                         >
                             <Icon icon="mdi:arrow-left" /> Back
                         </button>
                     </div>
 
-                    <div className="selected-doctor-info" style={{ marginBottom: '20px', padding: '15px', background: '#f8f9fa', borderRadius: '8px', borderLeft: '4px solid #667eea' }}>
-                        <h3 style={{ margin: 0, color: '#2d3748' }}>{selectedDoctor.user_name}</h3>
-                        <p style={{ margin: '5px 0 0', color: '#718096' }}>{getSpecialityName(selectedDoctor)}</p>
+                    <div className="selected-doctor-info">
+                        <h3>{selectedDoctor.user_name}</h3>
+                        <p>{getSpecialityName(selectedDoctor)}</p>
                     </div>
 
-
-                    {[...scheduleRows]
-                        .map((row, index) => ({ ...row, originalIndex: index }))
-                        .sort((a, b) => {
-                            if (a.isScheduled !== b.isScheduled) {
-                                return b.isScheduled - a.isScheduled;
-                            }
-                            return a.dayIndex - b.dayIndex;
-                        })
-                        .map((row, index, array) => (
-                            <div key={row.originalIndex} className="schedule-row-group">
-                                <div className="schedule-controls">
-                                    <div className="control-group">
-                                        <label>Select Day</label>
-                                        <select
-                                            value={row.dayIndex}
-                                            disabled={row.isScheduled}
-                                            onChange={(e) => handleUpdateRow(row.originalIndex, 'dayIndex', parseInt(e.target.value, 10))}
-                                        >
-                                            <option value={-1}>Select Day</option>
-                                            {scheduleDays.map((d, i) => {
-                                                if (scheduledDayIndices.includes(i) && row.dayIndex !== i) return null;
-                                                return (
-                                                    <option key={d.id} value={i}>
-                                                        {d.day}
-                                                    </option>
-                                                );
-                                            })}
-                                        </select>
-                                    </div>
-
-                                    <div className="control-group">
-                                        <label>From</label>
-                                        <input
-                                            type="time"
-                                            disabled={row.isScheduled}
-                                            value={row.from}
-                                            onChange={(e) => handleUpdateRow(row.originalIndex, 'from', e.target.value)}
-                                        />
-                                    </div>
-
-                                    <div className="control-group">
-                                        <label>To</label>
-                                        <input
-                                            type="time"
-                                            disabled={row.isScheduled}
-                                            value={row.to}
-                                            onChange={(e) => handleUpdateRow(row.originalIndex, 'to', e.target.value)}
-                                        />
-                                    </div>
-
-                                    <div className="control-group">
-                                        <label>Duration</label>
-                                        <select
-                                            value={row.duration}
-                                            disabled={row.isScheduled}
-                                            onChange={(e) => handleUpdateRow(row.originalIndex, 'duration', e.target.value)}
-                                        >
-                                            <option value="15">15 Mins</option>
-                                            <option value="30">30 Mins</option>
-                                            <option value="45">45 Mins</option>
-                                            <option value="60">1 Hour</option>
-                                        </select>
-                                    </div>
-
-                                    <div className="control-group buttons-row">
-                                        {!row.isScheduled ? (
-                                            <button className="schedule-btn" onClick={() => handleScheduleClick(row.originalIndex)}>Schedule</button>
-                                        ) : (
-                                            <button className="edit-btn" onClick={() => handleEditClick(row.originalIndex)}>Edit</button>
-                                        )}
-                                        {index === array.length - 1 && (
-                                            <button
-                                                className="add-row-btn"
-                                                onClick={handleAddRow}
-                                                disabled={scheduleRows.length >= 6}
-                                            >
-                                                <Icon icon="mdi:plus" /> Add Row
-                                            </button>
-                                        )}
-                                    </div>
+                    {existingSchedules.length > 0 && !isEditing && (
+                        <div className="existing-schedules">
+                            <h4>Existing Schedules</h4>
+                            {existingSchedules.map((sch, index) => (
+                                <div key={index} className="schedule-card">
+                                    <p><strong>Days:</strong> {sch.days}</p>
+                                    <p><strong>Time:</strong> {sch.doctor_from_time} - {sch.doctor_to_time}</p>
+                                    <p><strong>Date Range:</strong> {sch.doc_from_date} to {sch.doc_to_date}</p>
+                                    <p><strong>Slot Duration:</strong> {sch.doc_slot_dur} minutes</p>
                                 </div>
+                            ))}
+                        </div>
+                    )}
+
+                    <div className="schedule-form-container">
+                        <div className="schedule-controls">
+                            <div className="control-group">
+                                <label>From Time</label>
+                                <input
+                                    type="time"
+                                    value={schedule.fromTime}
+                                    disabled={isFormDisabled}
+                                    onChange={(e) => handleScheduleChange('fromTime', e.target.value)}
+                                />
                             </div>
-                        ))
-                    }
+                            <div className="control-group">
+                                <label>To Time</label>
+                                <input
+                                    type="time"
+                                    value={schedule.toTime}
+                                    disabled={isFormDisabled}
+                                    onChange={(e) => handleScheduleChange('toTime', e.target.value)}
+                                />
+                            </div>
+                            <div className="control-group">
+                                <label>From Date</label>
+                                <input
+                                    type="date"
+                                    value={schedule.fromDate}
+                                    disabled={isFormDisabled}
+                                    onChange={(e) => handleScheduleChange('fromDate', e.target.value)}
+                                />
+                            </div>
+                            <div className="control-group">
+                                <label>To Date</label>
+                                <input
+                                    type="date"
+                                    value={schedule.toDate}
+                                    disabled={isFormDisabled}
+                                    onChange={(e) => handleScheduleChange('toDate', e.target.value)}
+                                />
+                            </div>
+                            <div className="control-group">
+                                <label>Duration (minutes)</label>
+                                <select
+                                    value={schedule.duration}
+                                    disabled={isFormDisabled}
+                                    onChange={(e) => handleScheduleChange('duration', e.target.value)}
+                                >
+                                    <option value="15">15 Mins</option>
+                                    <option value="30">30 Mins</option>
+                                    <option value="45">45 Mins</option>
+                                    <option value="60">60 Mins</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="schedule-day-selector">
+                            {Object.keys(schedule.days).map(day => (
+                                <div key={day} className="day-checkbox-group">
+                                    <input
+                                        type="checkbox"
+                                        id={`day-${day}`}
+                                        checked={schedule.days[day]}
+                                        disabled={isFormDisabled}
+                                        onChange={() => handleDayChange(day)}
+                                    />
+                                    <label htmlFor={`day-${day}`}>{day}</label>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="schedule-action-buttons">
+                            {(!schedule.isScheduled || isEditing) && (
+                                <button
+                                    className="schedule-btn"
+                                    onClick={handleScheduleAction}
+                                    disabled={isLoading}
+                                >
+                                    <Icon icon="mdi:calendar-check" />
+                                    {isLoading ? 'Saving...' : (schedule.isScheduled ? 'Update Schedule' : 'Create Schedule')}
+                                </button>
+                            )}
+
+                            {isEditing && (
+                                <button
+                                    className="cancel-btn"
+                                    onClick={handleCancelEdit}
+                                    disabled={isLoading}
+                                >
+                                    <Icon icon="mdi:close" /> Cancel
+                                </button>
+                            )}
+
+                            {schedule.isScheduled && !isEditing && (
+                                <>
+                                    <button
+                                        className="edit-btn"
+                                        onClick={handleEditAction}
+                                        disabled={isLoading}
+                                    >
+                                        <Icon icon="mdi:pencil" /> Edit
+                                    </button>
+                                    <button
+                                        className="delete-btn"
+                                        onClick={handleDeleteAction}
+                                        disabled={isLoading}
+                                    >
+                                        <Icon icon="mdi:delete" /> Delete
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
                 </>
             )}
         </div>
