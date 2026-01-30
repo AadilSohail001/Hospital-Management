@@ -375,6 +375,61 @@ export default function Schedule() {
         setIsEditing(false);
     };
 
+    // Prefill a new schedule that starts after the current schedule's toDate
+    const handleCreateFollowingSchedule = () => {
+        if (!schedule.isScheduled || !schedule.toDate) {
+            toast.error("No existing schedule to base the next schedule on.");
+            return;
+        }
+
+        try {
+            const prevFrom = schedule.fromDate;
+            const prevTo = schedule.toDate;
+            const fromDateObj = new Date(prevFrom);
+            const toDateObj = new Date(prevTo);
+            if (isNaN(fromDateObj.getTime()) || isNaN(toDateObj.getTime())) {
+                toast.error("Existing schedule has invalid dates.");
+                return;
+            }
+
+            // next schedule starts the day after previous toDate
+            const nextFrom = new Date(toDateObj.getTime());
+            nextFrom.setDate(nextFrom.getDate() + 1);
+
+            // keep the same length (inclusive) as previous schedule
+            const diffMs = toDateObj.getTime() - fromDateObj.getTime();
+            const lengthDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+            const nextTo = new Date(nextFrom.getTime());
+            nextTo.setDate(nextTo.getDate() + lengthDays);
+
+            const fmt = (d) => {
+                const yyyy = d.getFullYear();
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const dd = String(d.getDate()).padStart(2, '0');
+                return `${yyyy}-${mm}-${dd}`;
+            };
+
+            setSchedule(prev => ({
+                ...prev,
+                id: null,
+                isScheduled: false,
+                fromDate: fmt(nextFrom),
+                toDate: fmt(nextTo),
+                // keep times, duration and days as previous
+                fromTime: prev.fromTime,
+                toTime: prev.toTime,
+                duration: prev.duration,
+                days: { ...prev.days }
+            }));
+
+            setIsEditing(false);
+            toast.info("Prefilled next schedule — adjust if needed and click Create Schedule.");
+        } catch (err) {
+            console.error("Failed to prefill following schedule:", err);
+            toast.error("Failed to prepare following schedule.");
+        }
+    };
+
     const getSpecialityName = (doc) => {
         if (doc.specialization) return doc.specialization;
         if (doc.spec_ID) {
@@ -550,6 +605,14 @@ export default function Schedule() {
 
                             {schedule.isScheduled && !isEditing && (
                                 <>
+                                    <button
+                                        className="schedule-btn"
+                                        onClick={handleCreateFollowingSchedule}
+                                        disabled={isLoading}
+                                        title="Create a new schedule starting after the current schedule"
+                                    >
+                                        <Icon icon="mdi:calendar-plus" /> New Following Schedule
+                                    </button>
                                     <button
                                         className="edit-btn"
                                         onClick={handleEditAction}

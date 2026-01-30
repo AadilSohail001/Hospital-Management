@@ -345,6 +345,7 @@ export default function Appointment() {
             }
 
             const raw = await response.json();
+            console.debug("create-appointment raw response:", raw);
 
             // Backend may return array directly or an object containing the array in different keys
             let slots = [];
@@ -367,8 +368,13 @@ export default function Appointment() {
                     }
                     return s;
                 });
-
-            const unique = Array.from(new Set(normalized)).sort();
+            // Deduplicate then sort by numeric minutes since midnight to avoid lexicographic ordering issues
+            const unique = Array.from(new Set(normalized)).sort((a, b) => {
+                const [ah, am] = a.split(":").map(Number);
+                const [bh, bm] = b.split(":").map(Number);
+                return (ah * 60 + am) - (bh * 60 + bm);
+            });
+            console.debug("normalized available slots:", unique);
 
             if (unique.length > 0) {
                 setAvailableSlots(unique);
@@ -463,28 +469,37 @@ export default function Appointment() {
             return;
         }
 
-        if (window.confirm(`Are you sure you want to delete the appointment for ${appointmentToDelete.patientName}?`)) {
-            try {
-                const token = localStorage.getItem("token");
-                const response = await fetch(`${API_BASE_URL}/appointments/delete-appointment/${appointmentToDelete.id}`, {
-                    method: "POST", // Note: DELETE method is more appropriate for deletion
-                    headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${token}`,
-                    },
-                });
+        // Only allow deletion for Pending appointments
+        if (String(appointmentToDelete.status).toLowerCase() !== "pending") {
+            toast.error("Only pending appointments can be deleted.");
+            return;
+        }
 
-                const result = await response.json();
+        if (!window.confirm(`Are you sure you want to delete the pending appointment for ${appointmentToDelete.patientName}?`)) {
+            return;
+        }
 
-                if (!response.ok) {
-                    throw new Error(result.message || result.alert || "Failed to delete appointment.");
-                }
+        try {
+            const token = localStorage.getItem("token");
+            const response = await fetch(`${API_BASE_URL}/appointments/delete-pending-appointment`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ apt_Id: appointmentToDelete.id }),
+            });
 
-                toast.success(result.success || "Appointment deleted successfully!");
-                fetchData();
-            } catch (error) {
-                toast.error(error.message);
+            const result = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                throw new Error(result.message || result.alert || "Failed to delete appointment.");
             }
+
+            toast.success(result.alert || result.success || "Appointment deleted successfully!");
+            fetchData();
+        } catch (error) {
+            toast.error(error.message || "Error deleting appointment");
         }
     };
 
@@ -733,6 +748,7 @@ export default function Appointment() {
                     appointmentIndex={rescheduleIndex}
                     appointments={appointments}
                     setAppointments={setAppointments}
+                    onSuccess={fetchData}
                 />
 
                 {/* Checkup Modal */}
@@ -893,7 +909,7 @@ export default function Appointment() {
                                                 <td>
                                                     <span
                                                         className={`status-cell ${appt.status.toLowerCase()}`}
-                                                        onClick={() => toggleStatus(index)}
+                                                        onClick={() => toggleStatus(index + firstIndex)}
                                                     >
                                                         {appt.status}
                                                     </span>
@@ -909,7 +925,7 @@ export default function Appointment() {
                                                     <button
                                                         type="button"
                                                         className="table-btn edit"
-                                                        onClick={() => handleEdit(index)}
+                                                        onClick={() => handleEdit(index + firstIndex)}
                                                         title="Edit"
                                                     >
                                                         <Icon icon="mdi:pencil" />
@@ -917,8 +933,9 @@ export default function Appointment() {
                                                     <button
                                                         type="button"
                                                         className="table-btn delete"
-                                                        onClick={() => handleDelete(index)}
-                                                        title="Delete"
+                                                        onClick={() => handleDelete(index + firstIndex)}
+                                                        disabled={String(appt.status).toLowerCase() !== "pending"}
+                                                        title={String(appt.status).toLowerCase() === "pending" ? "Delete" : "Only pending appointments can be deleted"}
                                                     >
                                                         <Icon icon="mdi:delete" />
                                                     </button>

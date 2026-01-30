@@ -109,6 +109,68 @@
     background: #e2e2e2;
 }
 
+.reschedule-cancel-btn:disabled,
+.reschedule-save-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Appointment Details */
+.reschedule-info {
+    background: #f9f9f9;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 8px;
+    font-size: 13px;
+}
+
+.reschedule-info p {
+    margin: 4px 0;
+    display: flex;
+    justify-content: space-between;
+}
+
+.reschedule-info strong {
+    color: #6675ea;
+}
+
+/* Select Dropdown */
+.reschedule-group select {
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 14px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    outline: none;
+    background: #fff;
+    cursor: pointer;
+}
+
+.reschedule-group select:focus {
+    border-color: #6675ea;
+    box-shadow: 0 0 3px rgba(102, 117, 234, 0.3);
+}
+
+.reschedule-group select:disabled {
+    background: #f5f5f5;
+    color: #999;
+    cursor: not-allowed;
+}
+
+/* No Slots Message */
+.no-slots-message {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 6px;
+    padding: 10px;
+    margin: 8px 0;
+    font-size: 13px;
+    color: #856404;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
 
 /* Animation */
 @keyframes rescheduleFadeIn {
