@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Icon } from "@iconify/react";
 import { toast } from "react-toastify";
@@ -9,8 +9,6 @@ const API_BASE_URL = "http://localhost:8080/hospital";
 const initialScheduleState = {
     id: null,
     isScheduled: false,
-    fromTime: "09:00",
-    toTime: "17:00",
     fromDate: "",
     toDate: "",
     duration: "30",
@@ -23,6 +21,13 @@ const initialScheduleState = {
         Saturday: false,
         Sunday: false,
     },
+};
+
+// Per-day time schedule structure
+const initialDayScheduleState = {
+    fromTime: "09:00",
+    toTime: "17:00",
+    duration: "30",
 };
 
 const dayMapping = {
@@ -43,9 +48,39 @@ export default function Schedule() {
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedDoctor, setSelectedDoctor] = useState(null);
     const [schedule, setSchedule] = useState(initialScheduleState);
+    // daySchedules[dayName] = { fromTime: "09:00", toTime: "17:00" }
+    const [daySchedules, setDaySchedules] = useState({
+        Monday: { ...initialDayScheduleState },
+        Tuesday: { ...initialDayScheduleState },
+        Wednesday: { ...initialDayScheduleState },
+        Thursday: { ...initialDayScheduleState },
+        Friday: { ...initialDayScheduleState },
+        Saturday: { ...initialDayScheduleState },
+        Sunday: { ...initialDayScheduleState },
+    });
     const [isEditing, setIsEditing] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [existingSchedules, setExistingSchedules] = useState([]);
+
+    // Helper functions - defined early so they can be used in useCallback
+    const resetDaySchedules = () => {
+        setDaySchedules({
+            Monday: { ...initialDayScheduleState },
+            Tuesday: { ...initialDayScheduleState },
+            Wednesday: { ...initialDayScheduleState },
+            Thursday: { ...initialDayScheduleState },
+            Friday: { ...initialDayScheduleState },
+            Saturday: { ...initialDayScheduleState },
+            Sunday: { ...initialDayScheduleState },
+        });
+    };
+
+    const formatTimeForBackend = (timeStr) => {
+        if (!timeStr) return timeStr;
+        const [hours, minutes] = timeStr.split(':');
+        const hourNum = parseInt(hours, 10);
+        return `${hourNum}:${minutes}`;
+    };
 
     useEffect(() => {
         fetchDoctors();
@@ -64,6 +99,7 @@ export default function Schedule() {
             setSelectedDoctor(null);
             setSchedule(initialScheduleState);
             setExistingSchedules([]);
+            resetDaySchedules();
         }
     }, [doctors, searchParams]);
 
@@ -118,7 +154,7 @@ export default function Schedule() {
         }
     };
 
-    const fetchDoctorSchedule = async (doctorId) => {
+    const fetchDoctorSchedule = useCallback(async (doctorId) => {
         try {
             setIsLoading(true);
             const token = localStorage.getItem("token");
@@ -134,41 +170,66 @@ export default function Schedule() {
                 setExistingSchedules(data);
 
                 if (data && data.length > 0) {
+                    // Populate schedule state and daySchedules from existing data
                     const firstSchedule = data[0];
                     const daysArray = firstSchedule.days ? firstSchedule.days.split(',') : [];
 
                     const daysObj = { ...initialScheduleState.days };
-                    daysArray.forEach(day => {
-                        const dayName = reverseDayMapping[day] || day;
+                    const newDaySchedules = {
+                        Monday: { ...initialDayScheduleState },
+                        Tuesday: { ...initialDayScheduleState },
+                        Wednesday: { ...initialDayScheduleState },
+                        Thursday: { ...initialDayScheduleState },
+                        Friday: { ...initialDayScheduleState },
+                        Saturday: { ...initialDayScheduleState },
+                        Sunday: { ...initialDayScheduleState },
+                    };
+
+                    daysArray.forEach(dayNum => {
+                        const dayName = reverseDayMapping[dayNum] || dayNum;
                         if (dayName in daysObj) {
                             daysObj[dayName] = true;
+                        }
+                        // For each day, find its schedule from existingSchedules
+                        const dayData = data.find(s => {
+                            const sDays = s.days ? s.days.split(',') : [];
+                            return sDays.includes(dayNum.toString());
+                        });
+                        if (dayData) {
+                            newDaySchedules[dayName] = {
+                                fromTime: dayData.doctor_from_time?.substring(0, 5) || "09:00",
+                                toTime: dayData.doctor_to_time?.substring(0, 5) || "17:00",
+                            };
                         }
                     });
 
                     setSchedule({
                         id: firstSchedule.id,
                         isScheduled: true,
-                        fromTime: firstSchedule.doctor_from_time?.substring(0, 5) || "09:00",
-                        toTime: firstSchedule.doctor_to_time?.substring(0, 5) || "17:00",
                         fromDate: firstSchedule.doc_from_date || "",
                         toDate: firstSchedule.doc_to_date || "",
                         duration: firstSchedule.doc_slot_dur?.toString() || "30",
                         days: daysObj,
                     });
+
+                    setDaySchedules(newDaySchedules);
                 } else {
                     setSchedule(initialScheduleState);
+                    resetDaySchedules();
                 }
             } else {
                 setSchedule(initialScheduleState);
+                resetDaySchedules();
             }
         } catch (error) {
             console.error("Failed to fetch schedule", error);
             toast.error("Failed to load schedule");
             setSchedule(initialScheduleState);
+            resetDaySchedules();
         } finally {
             setIsLoading(false);
         }
-    };
+    }, []);;
 
     const handleSearch = (e) => {
         const term = e.target.value.toLowerCase();
@@ -206,6 +267,26 @@ export default function Schedule() {
         }));
     };
 
+    const handleDayTimeChange = (day, field, value) => {
+        setDaySchedules(prev => ({
+            ...prev,
+            [day]: {
+                ...prev[day],
+                [field]: value
+            }
+        }));
+    };
+
+    const handleDayDurationChange = (day, value) => {
+        setDaySchedules(prev => ({
+            ...prev,
+            [day]: {
+                ...prev[day],
+                duration: value
+            }
+        }));
+    };
+
     const handleScheduleAction = async () => {
         if (!schedule.fromDate || !schedule.toDate) {
             toast.error("Please select both 'From Date' and 'To Date'.");
@@ -221,50 +302,34 @@ export default function Schedule() {
             return;
         }
 
-        const docDays = Object.keys(schedule.days)
-            .filter(day => schedule.days[day])
-            .map(day => dayMapping[day]);
-
-        const doctorID = selectedDoctor.doctor_ID || selectedDoctor.doctor_id ||
-            selectedDoctor.doctorId || selectedDoctor.id || selectedDoctor.user_Id;
-
-        const formatTimeForBackend = (timeStr) => {
-            if (!timeStr) return timeStr;
-            const [hours, minutes] = timeStr.split(':');
-            const hourNum = parseInt(hours, 10);
-            return `${hourNum}:${minutes}`;
-        };
-
-        const payload = {
-            docID: parseInt(doctorID, 10),
-            doc_days: docDays,
-            from_time: formatTimeForBackend(schedule.fromTime),
-            to_time: formatTimeForBackend(schedule.toTime),
-            from_date: schedule.fromDate,
-            to_date: schedule.toDate,
-            slot_duration: parseInt(schedule.duration, 10)
-        };
-
-        if (schedule.id) {
-            payload.sch_ID = schedule.id;
-        }
+        // Build array of per-day schedules
+        const selectedDays = Object.keys(schedule.days).filter(day => schedule.days[day]);
+        const daySchedulePayloads = selectedDays.map(day => {
+            const dayNum = dayMapping[day];
+            const times = daySchedules[day];
+            return {
+                docID: parseInt(selectedDoctor.doctor_ID || selectedDoctor.doctor_id || selectedDoctor.doctorId || selectedDoctor.id || selectedDoctor.user_Id, 10),
+                doc_day: dayNum,
+                from_time: formatTimeForBackend(times.fromTime),
+                to_time: formatTimeForBackend(times.toTime),
+                from_date: schedule.fromDate,
+                to_date: schedule.toDate,
+                slot_duration: parseInt(times.duration || schedule.duration, 10)
+            };
+        });
 
         try {
             setIsLoading(true);
             const token = localStorage.getItem("token");
-            const endpoint = schedule.id
-                ? `${API_BASE_URL}/schedule-doctors/edit-doctor-timetable`
-                : `${API_BASE_URL}/schedule-doctors/save-doctor-timetable`;
-
+            const endpoint = `${API_BASE_URL}/schedule-doctors/save-doctor-timetable`;
             const res = await fetch(endpoint, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                     "Authorization": `Bearer ${token}`
                 },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(daySchedulePayloads)
             });
-
             const responseText = await res.text();
             let responseData;
             try {
@@ -273,28 +338,16 @@ export default function Schedule() {
             } catch (e) {
                 responseData = { message: responseText };
             }
-
-            if (res.ok) {
-                const newSchedule = {
-                    ...schedule,
-                    isScheduled: true,
-                    id: schedule.id || Date.now()
-                };
-                setSchedule(newSchedule);
-                setIsEditing(false);
-
-                await fetchDoctorSchedule(doctorID);
-
-                toast.success(
-                    schedule.id
-                        ? "Schedule updated successfully!"
-                        : "Schedule created successfully!"
-                );
-            } else {
+            if (!res.ok) {
                 const errorMsg = responseData.error || responseData.message ||
                     `Error ${res.status}: ${responseText.substring(0, 100)}`;
-                toast.error(errorMsg);
+                toast.error(`Failed to save schedule: ${errorMsg}`);
+                return;
             }
+            toast.success("Schedule submitted successfully");
+            setIsEditing(false);
+            const doctorID = selectedDoctor.doctor_ID || selectedDoctor.doctor_id || selectedDoctor.doctorId || selectedDoctor.id || selectedDoctor.user_Id;
+            await fetchDoctorSchedule(doctorID);
         } catch (error) {
             console.error("Error saving schedule:", error);
             toast.error("Error saving schedule");
@@ -352,25 +405,38 @@ export default function Schedule() {
             const daysArray = firstSchedule.days ? firstSchedule.days.split(',') : [];
 
             const daysObj = { ...initialScheduleState.days };
-            daysArray.forEach(day => {
-                const dayName = reverseDayMapping[day] || day;
+            const newDaySchedules = { ...daySchedules };
+
+            daysArray.forEach(dayNum => {
+                const dayName = reverseDayMapping[dayNum] || dayNum;
                 if (dayName in daysObj) {
                     daysObj[dayName] = true;
+                }
+                const dayData = existingSchedules.find(s => {
+                    const sDays = s.days ? s.days.split(',') : [];
+                    return sDays.includes(dayNum.toString());
+                });
+                if (dayData) {
+                    newDaySchedules[dayName] = {
+                        fromTime: dayData.doctor_from_time?.substring(0, 5) || "09:00",
+                        toTime: dayData.doctor_to_time?.substring(0, 5) || "17:00",
+                    };
                 }
             });
 
             setSchedule({
                 id: firstSchedule.id,
                 isScheduled: true,
-                fromTime: firstSchedule.doctor_from_time?.substring(0, 5) || "09:00",
-                toTime: firstSchedule.doctor_to_time?.substring(0, 5) || "17:00",
                 fromDate: firstSchedule.doc_from_date || "",
                 toDate: firstSchedule.doc_to_date || "",
                 duration: firstSchedule.doc_slot_dur?.toString() || "30",
                 days: daysObj,
             });
+
+            setDaySchedules(newDaySchedules);
         } else {
             setSchedule(initialScheduleState);
+            resetDaySchedules();
         }
         setIsEditing(false);
     };
@@ -392,11 +458,9 @@ export default function Schedule() {
                 return;
             }
 
-            // next schedule starts the day after previous toDate
             const nextFrom = new Date(toDateObj.getTime());
             nextFrom.setDate(nextFrom.getDate() + 1);
 
-            // keep the same length (inclusive) as previous schedule
             const diffMs = toDateObj.getTime() - fromDateObj.getTime();
             const lengthDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
             const nextTo = new Date(nextFrom.getTime());
@@ -415,9 +479,6 @@ export default function Schedule() {
                 isScheduled: false,
                 fromDate: fmt(nextFrom),
                 toDate: fmt(nextTo),
-                // keep times, duration and days as previous
-                fromTime: prev.fromTime,
-                toTime: prev.toTime,
                 duration: prev.duration,
                 days: { ...prev.days }
             }));
@@ -440,6 +501,7 @@ export default function Schedule() {
     };
 
     const isFormDisabled = (schedule.isScheduled && !isEditing) || isLoading;
+    const selectedDays = Object.keys(schedule.days).filter(day => schedule.days[day]);
 
     return (
         <div className="schedule-container">
@@ -450,14 +512,14 @@ export default function Schedule() {
             {isLoading && (
                 <div className="loading-overlay">
                     <div className="loading-spinner"></div>
-                    <p>Loading...</p>
+                    <p>Loading schedule...</p>
                 </div>
             )}
 
             {!selectedDoctor ? (
                 <>
                     <div className="search-bar">
-
+                        <Icon icon="mdi:magnify" />
                         <input
                             placeholder="Search Doctor"
                             value={searchTerm}
@@ -466,17 +528,23 @@ export default function Schedule() {
                     </div>
 
                     <div className="doctors-grid">
-                        {filteredDoctors.map(doc => (
-                            <div
-                                key={doc.id || doc.user_Id}
-                                className="doctor-card"
-                                onClick={() => setSearchParams({ doctorId: doc.id || doc.user_Id })}
-                            >
-                                <Icon icon="mdi:doctor" />
-                                <h3>{doc.user_name}</h3>
-                                <p>{getSpecialityName(doc)}</p>
-                            </div>
-                        ))}
+                        {filteredDoctors && filteredDoctors.length > 0 ? (
+                            filteredDoctors.map(doc => (
+                                <div
+                                    key={doc.id || doc.user_Id}
+                                    className="doctor-card"
+                                    onClick={() => setSearchParams({ doctorId: doc.id || doc.user_Id })}
+                                >
+                                    <Icon icon="mdi:doctor" />
+                                    <h3>{doc.user_name || "Doctor"}</h3>
+                                    <p>{getSpecialityName(doc)}</p>
+                                </div>
+                            ))
+                        ) : (
+                            <p style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px', color: '#999' }}>
+                                No doctors available. Please check back later.
+                            </p>
+                        )}
                     </div>
                 </>
             ) : (
@@ -514,25 +582,8 @@ export default function Schedule() {
                     )}
 
                     <div className="schedule-form-container">
+                        {/* Global Date and Duration Controls */}
                         <div className="schedule-controls">
-                            <div className="control-group">
-                                <label>From Time</label>
-                                <input
-                                    type="time"
-                                    value={schedule.fromTime}
-                                    disabled={isFormDisabled}
-                                    onChange={(e) => handleScheduleChange('fromTime', e.target.value)}
-                                />
-                            </div>
-                            <div className="control-group">
-                                <label>To Time</label>
-                                <input
-                                    type="time"
-                                    value={schedule.toTime}
-                                    disabled={isFormDisabled}
-                                    onChange={(e) => handleScheduleChange('toTime', e.target.value)}
-                                />
-                            </div>
                             <div className="control-group">
                                 <label>From Date</label>
                                 <input
@@ -551,35 +602,74 @@ export default function Schedule() {
                                     onChange={(e) => handleScheduleChange('toDate', e.target.value)}
                                 />
                             </div>
-                            <div className="control-group">
-                                <label>Duration (minutes)</label>
-                                <select
-                                    value={schedule.duration}
-                                    disabled={isFormDisabled}
-                                    onChange={(e) => handleScheduleChange('duration', e.target.value)}
-                                >
-                                    <option value="15">15 Mins</option>
-                                    <option value="30">30 Mins</option>
-                                    <option value="45">45 Mins</option>
-                                    <option value="60">60 Mins</option>
-                                </select>
+                            {/* Slot Duration removed from global controls, now per-day only */}
+                        </div>
+
+                        {/* Day Selection Checkboxes */}
+                        <div className="schedule-day-selector">
+                            <h4>Select Days</h4>
+                            <div className="day-checkboxes">
+                                {Object.keys(schedule.days).map(day => (
+                                    <div key={day} className="day-checkbox-group">
+                                        <input
+                                            type="checkbox"
+                                            id={`day-${day}`}
+                                            checked={schedule.days[day]}
+                                            disabled={isFormDisabled}
+                                            onChange={() => handleDayChange(day)}
+                                        />
+                                        <label htmlFor={`day-${day}`}>{day}</label>
+                                    </div>
+                                ))}
                             </div>
                         </div>
 
-                        <div className="schedule-day-selector">
-                            {Object.keys(schedule.days).map(day => (
-                                <div key={day} className="day-checkbox-group">
-                                    <input
-                                        type="checkbox"
-                                        id={`day-${day}`}
-                                        checked={schedule.days[day]}
-                                        disabled={isFormDisabled}
-                                        onChange={() => handleDayChange(day)}
-                                    />
-                                    <label htmlFor={`day-${day}`}>{day}</label>
+                        {/* Per-Day Time Slot Cards */}
+                        {selectedDays.length > 0 && (
+                            <div className="day-schedule-cards">
+                                <h4>Daily Schedule</h4>
+                                <div className="cards-grid">
+                                    {selectedDays.map(day => (
+                                        <div key={day} className="day-schedule-card">
+                                            <h5>{day}</h5>
+                                            <div className="day-time-controls">
+                                                <div className="time-group">
+                                                    <label>From Time</label>
+                                                    <input
+                                                        type="time"
+                                                        value={daySchedules[day].fromTime}
+                                                        disabled={isFormDisabled}
+                                                        onChange={(e) => handleDayTimeChange(day, 'fromTime', e.target.value)}
+                                                    />
+                                                </div>
+                                                <div className="time-group">
+                                                    <label>To Time</label>
+                                                    <input
+                                                        type="time"
+                                                        value={daySchedules[day].toTime}
+                                                        disabled={isFormDisabled}
+                                                        onChange={(e) => handleDayTimeChange(day, 'toTime', e.target.value)}
+                                                    />
+                                                </div>
+                                                <div className="time-group">
+                                                    <label>Slot Duration (minutes)</label>
+                                                    <select
+                                                        value={daySchedules[day].duration || "15"}
+                                                        disabled={isFormDisabled}
+                                                        onChange={(e) => handleDayDurationChange(day, e.target.value)}
+                                                    >
+                                                        <option value="15">15 Mins</option>
+                                                        <option value="30">30 Mins</option>
+                                                        <option value="45">45 Mins</option>
+                                                        <option value="60">60 Mins</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
-                            ))}
-                        </div>
+                            </div>
+                        )}
 
                         <div className="schedule-action-buttons">
                             {(!schedule.isScheduled || isEditing) && (
@@ -632,7 +722,8 @@ export default function Schedule() {
                         </div>
                     </div>
                 </>
-            )}
-        </div>
+            )
+            }
+        </div >
     );
 }
