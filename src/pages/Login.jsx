@@ -4,6 +4,7 @@ import { toast } from "react-toastify";
 import MyInput from "../components/MyInputs";
 import MyButton from "../components/MyButtons";
 import "../styles/Login.css";
+import { postData } from "../utils/apiService";
 
 export default function Login() {
     const navigate = useNavigate();
@@ -36,19 +37,12 @@ export default function Login() {
         try {
             setLoading(true);
 
-            const response = await fetch("http://localhost:8080/hospital/users/login-user", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({ email, password })
-            });
+            const response = await postData("/users/login-user", { email, password });
 
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.message || "Login failed");
+            if (response.status !== 200 && response.status !== 202) {
+                throw new Error(response.data?.message || "Login failed");
             }
+            const data = response.data;
 
             // Store token
             localStorage.setItem("token", data.token);
@@ -73,7 +67,8 @@ export default function Login() {
                     id: payload.id ?? payload.user_id ?? payload.userId,
                     role_ID: payload.role_id ?? payload.role_ID ?? payload.roleId,
                     email: payload.email,
-                    name: payload.name || payload.user_name || payload.sub
+                    name: payload.name || payload.user_name || payload.sub,
+                    speciality: data.speciality || data.specialization
                 }
                 : null;
 

@@ -1,13 +1,84 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { Icon } from '@iconify/react';
-import { fetchRegularUsers, updateUser, deleteUser } from '../utils/apiService';
-import useDataFetch from '../hooks/useDataFetch';
+import { getData, updateUser, deleteUser } from '../utils/apiService';
 import Pagination from "../components/Pagination";
 import '../styles/Home.css';
 
 export default function Home() {
-    const { data: users, loading, error, refetch } = useDataFetch(fetchRegularUsers);
+    const [users, setUsers] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    // Pagination State
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalUsers, setTotalUsers] = useState(0);
+    const recordsPerPage = 5;
+
+    // Load users from backend
+    const loadUsers = async (page = "firstPage") => {
+        setLoading(true);
+        try {
+
+            // Build the URL based on page parameter
+            let url = '/users/show-all';
+            if (page && page !== "firstPage") {
+                url += `?page=${page}`;
+            }
+
+            const response = await getData(url);
+
+            if (response.status === 200) {
+                const data = response.data;
+
+                if (data && data.allUsers && Array.isArray(data.allUsers)) {
+                    setUsers(data.allUsers);
+
+                    // Set pagination values
+                    setCurrentPage(Number(data.currentPage) || 1);
+                    setTotalUsers(Number(data.totalUsers) || 0);
+
+                    // Calculate total pages
+                    const calculatedTotalPages = Math.ceil(Number(data.totalUsers) / recordsPerPage);
+                    setTotalPages(calculatedTotalPages > 0 ? calculatedTotalPages : 1);
+
+                } else {
+                    setUsers([]);
+                    setTotalUsers(0);
+                    setTotalPages(0);
+                    toast.info("No users found");
+                }
+            } else {
+                setUsers([]);
+                toast.error("Failed to load users");
+            }
+        } catch (error) {
+            console.error("Error fetching users:", error);
+
+            // More detailed error logging
+            if (error.response) {
+
+                if (error.response.status === 404) {
+                    toast.error("Users endpoint not found. Check the API URL.");
+                } else if (error.response.status === 500) {
+                    toast.error("Server error. Please try again later.");
+                }
+            } else if (error.request) {
+                console.error("No response received:", error.request);
+                toast.error("No response from server. Check your connection.");
+            } else {
+                toast.error("Error loading users: " + error.message);
+            }
+
+            setUsers([]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        loadUsers("firstPage");
+    }, []);
 
     const [showModal, setShowModal] = useState(false);
     const [editUserId, setEditUserId] = useState(null);
@@ -17,33 +88,28 @@ export default function Home() {
         user_password: ""
     });
 
-    const [currentPage, setCurrentPage] = useState(1);
-    const recordsPerPage = 3;
-    const lastIndex = currentPage * recordsPerPage;
-    const firstIndex = lastIndex - recordsPerPage;
-    const paginatedUsers = users.slice(firstIndex, lastIndex);
-    const totalPages = Math.ceil(users.length / recordsPerPage);
-
     async function handleDelete(index) {
-        const actualIndex = firstIndex + index;
-        const userToDelete = users[actualIndex];
-        if (!window.confirm(`Delete ${userToDelete.user_name}?`)) return;
+        const userToDelete = users[index];
+        if (!window.confirm(`Are you sure you want to delete ${userToDelete.user_name}?`)) return;
 
         try {
             await deleteUser(userToDelete.user_Id);
             toast.success("User deleted successfully!");
-            await refetch();
-            if (paginatedUsers.length === 1 && currentPage > 1) {
-                setCurrentPage(prev => Math.max(1, prev - 1));
+
+            // Handle pagination after deletion
+            if (users.length === 1 && currentPage > 1) {
+                await loadUsers(currentPage - 1);
+            } else {
+                await loadUsers(currentPage);
             }
         } catch (error) {
-            toast.error(error.message);
+            console.error("Delete error:", error);
+            toast.error(error.message || "Failed to delete user");
         }
     }
 
     function openEditModal(index) {
-        const actualIndex = firstIndex + index;
-        const user = users[actualIndex];
+        const user = users[index];
         setEditUserId(user.user_Id);
         setEditUser({
             user_name: user.user_name || "",
@@ -61,37 +127,37 @@ export default function Home() {
         }
 
         try {
-            // The backend has a bug: it expects oldUserData.password but should expect oldUserData.user_password
-            // Until backend is fixed, we need to work around this
+            // Check if password meets minimum requirements
+            if (editUser.user_password && editUser.user_password.length < 8) {
+                toast.error("Password must be at least 8 characters long");
+                return;
+            }
 
-            // Option 1: Send minimum valid password (if validation requires it)
+            // If password is empty, don't include it in the update
             const updateData = {
                 name: editUser.user_name,
-                email: editUser.user_email,
-                password: editUser.user_password || "MinimumPass123!" // Minimum valid password
+                email: editUser.user_email
             };
 
-            console.log("Updating user with data:", updateData);
+            // Only add password if it's provided
+            if (editUser.user_password.trim() !== "") {
+                updateData.password = editUser.user_password;
+            }
 
-            // Try to update
-            const response = await updateUser(editUserId, updateData);
-            console.log("Update response:", response);
+            await updateUser(editUserId, updateData);
 
             toast.success("User updated successfully!");
             setShowModal(false);
             setEditUserId(null);
             setEditUser({ user_name: "", user_email: "", user_password: "" });
-            await refetch();
+            await loadUsers(currentPage);
 
         } catch (error) {
             console.error("Full update error:", error);
 
-            // Log the actual error response from backend
             if (error.response?.data) {
-                console.error("Backend error response:", error.response.data);
 
                 if (error.response.data.errors) {
-                    // Show validation errors
                     const validationErrors = error.response.data.errors
                         .map(err => `${err.param}: ${err.msg}`)
                         .join(', ');
@@ -100,6 +166,8 @@ export default function Home() {
                     toast.error(`Update failed: ${error.response.data.alert}`);
                 } else if (error.response.data.error) {
                     toast.error(`Error: ${JSON.stringify(error.response.data.error)}`);
+                } else if (error.response.data.message) {
+                    toast.error(`Error: ${error.response.data.message}`);
                 }
             } else {
                 toast.error(error.message || "Failed to update user");
@@ -107,8 +175,20 @@ export default function Home() {
         }
     }
 
-    if (loading && users.length === 0) return <div style={{ textAlign: "center", padding: "2rem" }}>Loading...</div>;
-    if (error && users.length === 0) return <div style={{ textAlign: "center", padding: "2rem", color: "red" }}>Error: {error}</div>;
+    const handlePrevPage = () => {
+        if (currentPage > 1) {
+            const newPage = currentPage - 1;
+            loadUsers(newPage);
+        }
+    };
+
+    const handleNextPage = () => {
+
+        if (currentPage < totalPages) {
+            const newPage = currentPage + 1;
+            loadUsers(newPage);
+        }
+    };
 
     return (
         <>
@@ -116,40 +196,110 @@ export default function Home() {
             <p className="subtitle">Your gateway to awesome content.</p>
             <div className="users-section">
                 <h3>Registered Users (Non-Doctors)</h3>
-                {users.length === 0 ? (
+
+                {loading ? (
+                    <div style={{ textAlign: "center", padding: "2rem" }}>
+                        <Icon icon="eos-icons:loading" width="40" height="40" />
+                        <p>Loading users...</p>
+                    </div>
+                ) : users.length === 0 ? (
                     <div className="no-users">
                         <Icon icon="mdi:account-group-off" width="40" height="40" />
                         <p>No regular users registered yet.</p>
+                        <button
+                            onClick={() => loadUsers("firstPage")}
+                            style={{ marginTop: '1rem' }}
+                            className="save-btn"
+                        >
+                            Refresh Users
+                        </button>
                     </div>
                 ) : (
-                    <div className="table-responsive">
-                        <table className="users-table">
-                            <thead>
-                                <tr>
-                                    <th>Name</th>
-                                    <th>Email</th>
-                                    <th>Password</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {paginatedUsers.map((user, index) => (
-                                    <tr key={user.user_Id || index}>
-                                        <td>{user.user_name || "N/A"}</td>
-                                        <td>{user.user_email || "N/A"}</td>
-                                        <td><span style={{ fontFamily: 'monospace', fontSize: '0.85em' }}>{(user.user_password || "N/A").substring(0, 20)}...</span></td>
-                                        <td>
-                                            <div className="actionhome-buttons">
-                                                <button className="btn-edit" onClick={() => openEditModal(index)} title="Edit"><Icon icon="nimbus:edit" width="16" height="16" /></button>
-                                                <button className="btn-delete" onClick={() => handleDelete(index)} title="Delete"><Icon icon="weui:delete-on-filled" width="22" height="22" /></button>
-                                            </div>
-                                        </td>
+                    <>
+                        <div className="table-responsive">
+                            <table className="users-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Name</th>
+                                        <th>Email</th>
+                                        <th>Role</th>
+                                        <th>Password Hash</th>
+                                        <th>Actions</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                        <Pagination currentPage={currentPage} totalPages={totalPages} onPrev={() => currentPage > 1 && setCurrentPage(prev => prev - 1)} onNext={() => currentPage < totalPages && setCurrentPage(prev => prev + 1)} onPageChange={setCurrentPage} />
-                    </div>
+                                </thead>
+                                <tbody>
+                                    {users.map((user, index) => (
+                                        <tr key={user.user_Id || index}>
+                                            <td>{user.user_Id}</td>
+                                            <td>{user.user_name}</td>
+                                            <td>{user.user_email}</td>
+                                            <td>
+                                                <span className={`role-badge ${user.role === 'admin' ? 'admin' : 'user'}`}>
+                                                    {user.role}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span style={{
+                                                    fontFamily: 'monospace',
+                                                    fontSize: '0.75em',
+                                                    color: '#666',
+                                                    wordBreak: 'break-all'
+                                                }}>
+                                                    {user.user_password.substring(0, 25)}...
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div className="actionhome-buttons">
+                                                    <button
+                                                        className="btn-edit"
+                                                        onClick={() => openEditModal(index)}
+                                                        title="Edit"
+                                                        disabled={user.role === 'admin'} // Disable edit for admin
+                                                    >
+                                                        <Icon icon="nimbus:edit" width="16" height="16" />
+                                                    </button>
+                                                    <button
+                                                        className="btn-delete"
+                                                        onClick={() => handleDelete(index)}
+                                                        title="Delete"
+                                                        disabled={user.role === 'admin'} // Disable delete for admin
+                                                    >
+                                                        <Icon icon="weui:delete-on-filled" width="22" height="22" />
+                                                    </button>
+                                                </div>
+                                                {user.role === 'admin' && (
+                                                    <small style={{ color: '#999', fontSize: '0.7em', display: 'block' }}>
+                                                        Admin users cannot be edited/deleted
+                                                    </small>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Pagination - Only show if there are multiple pages */}
+                        {users.length > 0 && totalPages > 1 && (
+                            <div style={{ marginTop: '20px' }}>
+                                <Pagination
+                                    currentPage={currentPage}
+                                    totalPages={totalPages}
+                                    onPrev={handlePrevPage}
+                                    onNext={handleNextPage}
+                                />
+                                <div style={{
+                                    textAlign: 'center',
+                                    marginTop: '10px',
+                                    color: '#666',
+                                    fontSize: '0.9em'
+                                }}>
+                                    Showing {users.length} of {totalUsers} users
+                                </div>
+                            </div>
+                        )}
+                    </>
                 )}
             </div>
 
@@ -161,10 +311,11 @@ export default function Home() {
                             <input
                                 className='input-a'
                                 type="text"
-                                placeholder="Name (letters only)"
+                                placeholder="Name"
                                 value={editUser.user_name}
                                 onChange={(e) => setEditUser({ ...editUser, user_name: e.target.value })}
                                 required
+                                disabled={loading}
                             />
                             <input
                                 className='input-a'
@@ -173,22 +324,36 @@ export default function Home() {
                                 value={editUser.user_email}
                                 onChange={(e) => setEditUser({ ...editUser, user_email: e.target.value })}
                                 required
+                                disabled={loading}
                             />
                             <input
                                 className='input-a'
                                 type="password"
-                                placeholder="New Password (minimum 8 characters)"
+                                placeholder="New Password (optional, min 8 chars)"
                                 value={editUser.user_password}
                                 onChange={(e) => setEditUser({ ...editUser, user_password: e.target.value })}
                                 minLength="8"
-                                required
+                                disabled={loading}
                             />
                             <small style={{ color: '#666', display: 'block', marginBottom: '1rem' }}>
-                                Password is required (minimum 8 characters)
+                                Leave password empty to keep current password
                             </small>
                             <div className="modal-buttons">
-                                <button type="submit" className="save-btn">Save</button>
-                                <button type="button" onClick={() => setShowModal(false)} className="cancel-btn">Cancel</button>
+                                <button
+                                    type="submit"
+                                    className="save-btn"
+                                    disabled={loading}
+                                >
+                                    {loading ? "Saving..." : "Save"}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowModal(false)}
+                                    className="cancel-btn"
+                                    disabled={loading}
+                                >
+                                    Cancel
+                                </button>
                             </div>
                         </form>
                     </div>

@@ -105,6 +105,8 @@ function App() {
         }
       >
         <Route path="/doctor-dashboard" element={<DoctorDashboard />} />
+        <Route path="/about" element={<About />} />
+        <Route path="/contact" element={<Contact />} />
       </Route>
     </Routes>
   );

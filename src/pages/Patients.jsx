@@ -3,40 +3,54 @@ import { Icon } from "@iconify/react";
 import { toast } from "react-toastify";
 
 import Pagination from "../components/Pagination";
+import { getData, postData } from "../utils/apiService";
 
 import "../styles/Patients.css";
 
-const API_BASE_URL = "http://localhost:8080/hospital";
-
 export default function Patients() {
     const [patients, setPatients] = useState([]);
-    // eslint-disable-next-line no-unused-vars
     const [loading, setLoading] = useState(true);
 
+    // Pagination State
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalUsers, setTotalUsers] = useState(0);
+    const recordsPerPage = 5;
+
     // Load patients from backend
-    const loadPatients = async () => {
+    const loadPatients = async (page = 1) => {
         setLoading(true);
         try {
-            const token = localStorage.getItem("token");
-            const response = await fetch(`${API_BASE_URL}/patients/show-patients`, {
-                method: "GET",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`
-                }
-            });
+            const response = await getData(`/patients/show-patients?page=${page}`);
 
-            if (response.ok) {
-                const data = await response.json();
-                const patientsList = Array.isArray(data) ? data : [];
-                setPatients(patientsList);
+            if (response.status === 200) {
+                const data = response.data;
+
+                if (data && data.patientsShown) {
+                    setPatients(data.patientsShown);
+
+                    // Make sure currentPage is a number
+                    const apiCurrentPage = Number(data.currentPage) || 1;
+                    const apiTotalUsers = Number(data.totalUsers) || 0;
+
+                    setCurrentPage(apiCurrentPage);
+                    setTotalUsers(apiTotalUsers);
+
+                    // Calculate total pages
+                    const calculatedTotalPages = Math.ceil(apiTotalUsers / recordsPerPage);
+                    setTotalPages(calculatedTotalPages);
+
+                } else {
+                    setPatients([]);
+                    setTotalUsers(0);
+                    setTotalPages(0);
+                }
             } else {
-                console.error("Failed to fetch patients");
                 setPatients([]);
                 toast.error("Failed to load patients");
             }
+            // eslint-disable-next-line no-unused-vars
         } catch (error) {
-            console.error("Error fetching patients:", error);
             setPatients([]);
             toast.error("Error loading patients");
         } finally {
@@ -45,17 +59,8 @@ export default function Patients() {
     };
 
     useEffect(() => {
-        loadPatients();
+        loadPatients(1);
     }, []);
-
-    // PAGINATION
-    const [currentPage, setCurrentPage] = useState(1);
-    const recordsPerPage = 5;
-
-    const lastIndex = currentPage * recordsPerPage;
-    const firstIndex = lastIndex - recordsPerPage;
-    const paginatedPatients = patients.slice(firstIndex, lastIndex);
-    const totalPages = Math.ceil(patients.length / recordsPerPage);
 
     // Modal
     const [showModal, setShowModal] = useState(false);
@@ -92,25 +97,17 @@ export default function Patients() {
                 const updateData = {
                     p_name: patientName,
                     p_condition: condition,
-                    p_contact: parseInt(contact)
+                    p_contact: contact
                 };
 
-                const token = localStorage.getItem("token");
-                const response = await fetch(`${API_BASE_URL}/patients/update-patient/${patientId}`, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${token}`
-                    },
-                    body: JSON.stringify(updateData)
-                });
+                const response = await postData(`/patients/update-patient/${patientId}`, updateData);
 
-                if (response.ok) {
-                    await loadPatients();
+                if (response.status === 200) {
+                    await loadPatients(currentPage);
                     toast.success("Patient updated successfully!");
                     resetForm();
                 } else {
-                    const errorData = await response.json();
+                    const errorData = response.data;
                     toast.error(errorData.message || "Failed to update patient");
                 }
             } else {
@@ -118,30 +115,25 @@ export default function Patients() {
                 const newPatientData = {
                     p_name: patientName,
                     p_condition: condition,
-                    p_contact: parseInt(contact)
+                    p_contact: contact
                 };
 
-                const token = localStorage.getItem("token");
-                const response = await fetch(`${API_BASE_URL}/patients/register-patient`, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${token}`
-                    },
-                    body: JSON.stringify(newPatientData)
-                });
+                const response = await postData("/patients/register-patient", newPatientData);
 
-                if (response.ok) {
-                    await loadPatients();
+                if (response.status === 200) {
+                    // After adding, we need to reload to get the updated total count
+                    // First, try to go to the last page
+                    const lastPage = Math.ceil((totalUsers + 1) / recordsPerPage);
+                    await loadPatients(lastPage);
                     toast.success("Patient added successfully!");
                     resetForm();
                 } else {
-                    const errorData = await response.json();
+                    const errorData = response.data;
                     toast.error(errorData.message || "Failed to add patient");
                 }
             }
+            // eslint-disable-next-line no-unused-vars
         } catch (error) {
-            console.error("Error saving patient:", error);
             toast.error("Error saving patient");
         }
     }
@@ -156,51 +148,51 @@ export default function Patients() {
     }
 
     function handleEdit(index) {
-        const p = paginatedPatients[index];
+        const p = patients[index];
         setPatientId(p.id);
         setPatientName(p.patient_name);
         setCondition(p.condition);
         setContact(p.contact || "");
-        setEditIndex(index + firstIndex);
+        setEditIndex(index);
         setShowModal(true);
     }
 
     async function handleDelete(index) {
         if (window.confirm("Are you sure you want to delete this patient?")) {
-            const p = paginatedPatients[index];
+            const p = patients[index];
 
             try {
-                const token = localStorage.getItem("token");
-                const response = await fetch(`${API_BASE_URL}/patients/delete-patient/${p.id}`, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${token}`
-                    }
-                });
+                const response = await postData(`/patients/delete-patient/${p.id}`);
 
-                if (response.ok) {
-                    await loadPatients();
+                if (response.status === 200) {
+                    // Handle pagination after deletion
+                    if (patients.length === 1 && currentPage > 1) {
+                        // If this is the last patient on the page, go to previous page
+                        await loadPatients(currentPage - 1);
+                    } else {
+                        // Reload current page
+                        await loadPatients(currentPage);
+                    }
                     toast.success("Patient deleted successfully!");
-
-                    if (paginatedPatients.length === 1 && currentPage > 1) {
-                        setCurrentPage(prev => Math.max(1, prev - 1));
-                    }
                 } else {
                     toast.error("Failed to delete patient");
                 }
+                // eslint-disable-next-line no-unused-vars
             } catch (error) {
-                console.error("Error deleting patient:", error);
                 toast.error("Error deleting patient");
             }
         }
     }
 
-    const handleNavigation = (direction) => {
-        if (direction === "next" && currentPage < totalPages) {
-            setCurrentPage(prev => prev + 1);
-        } else if (direction === "prev" && currentPage > 1) {
-            setCurrentPage(prev => prev - 1);
+    const handlePrevPage = () => {
+        if (currentPage > 1) {
+            loadPatients(currentPage - 1);
+        }
+    };
+
+    const handleNextPage = () => {
+        if (currentPage < totalPages) {
+            loadPatients(currentPage + 1);
         }
     };
 
@@ -208,7 +200,14 @@ export default function Patients() {
         <div>
             <h1 className="patients-title">Patients</h1>
 
-            <button className="save-btn" style={{ marginBottom: 10 }} onClick={() => setShowModal(true)}>
+            {loading && <div className="loading-indicator">Loading patients...</div>}
+
+            <button
+                className="save-btn"
+                style={{ marginBottom: 10 }}
+                onClick={() => setShowModal(true)}
+                disabled={loading}
+            >
                 + Add Patient
             </button>
 
@@ -228,11 +227,11 @@ export default function Patients() {
                         {patients.length === 0 ? (
                             <tr>
                                 <td colSpan="5" className="no-patients">
-                                    No Patients Added
+                                    {loading ? "Loading patients..." : "No Patients Found"}
                                 </td>
                             </tr>
                         ) : (
-                            paginatedPatients.map((p, i) => (
+                            patients.map((p, i) => (
                                 <tr key={i}>
                                     <td>{p.id}</td>
                                     <td>{p.patient_name}</td>
@@ -243,12 +242,14 @@ export default function Patients() {
                                             <button
                                                 className="btn-edit"
                                                 onClick={() => handleEdit(i)}
+                                                disabled={loading}
                                             >
                                                 <Icon icon="mdi:account-edit" width="20" />
                                             </button>
                                             <button
                                                 className="btn-delete"
                                                 onClick={() => handleDelete(i)}
+                                                disabled={loading}
                                             >
                                                 <Icon icon="mdi:trash" width="20" />
                                             </button>
@@ -260,12 +261,14 @@ export default function Patients() {
                     </tbody>
                 </table>
 
-                <Pagination
-                    currentPage={currentPage}
-                    totalPages={totalPages}
-                    onPrev={() => handleNavigation("prev")}
-                    onNext={() => handleNavigation("next")}
-                />
+                {patients.length > 0 && totalPages > 1 && (
+                    <Pagination
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        onPrev={handlePrevPage}
+                        onNext={handleNextPage}
+                    />
+                )}
             </div>
 
             {/* MODAL */}
@@ -281,6 +284,7 @@ export default function Patients() {
                                 value={patientName}
                                 onChange={e => setPatientName(e.target.value)}
                                 autoFocus
+                                disabled={loading}
                             />
 
                             <input
@@ -288,6 +292,7 @@ export default function Patients() {
                                 required
                                 value={condition}
                                 onChange={e => setCondition(e.target.value)}
+                                disabled={loading}
                             />
 
                             <input
@@ -295,11 +300,23 @@ export default function Patients() {
                                 required
                                 value={contact}
                                 onChange={e => setContact(e.target.value)}
+                                disabled={loading}
                             />
 
                             <div className="modal-buttons">
-                                <button className="save-btn" type="submit">Save</button>
-                                <button className="cancel-btn" type="button" onClick={resetForm}>
+                                <button
+                                    className="save-btn"
+                                    type="submit"
+                                    disabled={loading}
+                                >
+                                    {loading ? "Saving..." : "Save"}
+                                </button>
+                                <button
+                                    className="cancel-btn"
+                                    type="button"
+                                    onClick={resetForm}
+                                    disabled={loading}
+                                >
                                     Cancel
                                 </button>
                             </div>

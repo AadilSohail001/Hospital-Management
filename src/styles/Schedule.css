@@ -399,25 +399,103 @@
 }
 
 .existing-schedules {
-    margin-bottom: 20px;
+    margin-bottom: 30px;
+    padding: 20px;
+    background: #f9f9fa;
+    border-radius: 12px;
+    border: 1px solid #e5e5e5;
 }
 
-.existing-schedules h4 {
-    color: #4a5568;
-    margin-bottom: 10px;
+.existing-schedules-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    gap: 15px;
+}
+
+.existing-schedules-header h4 {
+    color: #333;
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.schedules-cards-container {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
 }
 
 .schedule-card {
     background: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    transition: all 0.2s ease-in-out;
+}
+
+.schedule-card:hover {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    border-color: #667eea;
+}
+
+.card-day-header {
+    background: linear-gradient(135deg, #667eea 0%, #5568d3 100%);
+    padding: 12px 16px;
+    margin: 0;
+}
+
+.card-day-header h5 {
+    font-size: 1rem;
+    color: white;
+    margin: 0;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.card-content {
+    padding: 16px;
+}
+
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 10px;
+    gap: 8px;
+}
+
+.info-row:last-child {
+    margin-bottom: 0;
+}
+
+.info-row .label {
+    font-weight: 600;
+    color: #333;
+    font-size: 0.9rem;
+    min-width: 70px;
+}
+
+.info-row .value {
+    color: #555;
+    font-size: 0.9rem;
+    text-align: right;
+    flex: 1;
 }
 
 .schedule-card p {
-    margin: 5px 0;
-    color: #4a5568;
+    margin: 8px 0;
+    color: #555;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.schedule-card strong {
+    color: #333;
+    font-weight: 600;
 }
 
 .add-row-btn {
@@ -566,20 +644,53 @@
    ========================================================================== */
 .schedule-day-selector {
     margin-bottom: 30px;
+    padding: 16px;
+    background: #f8f9fa;
+    border-radius: 8px;
 }
 
-.schedule-day-selector h4 {
+.day-selector-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    gap: 15px;
+}
+
+.day-selector-header h4 {
     font-size: 1.1rem;
     color: #333;
-    margin-bottom: 15px;
+    margin: 0;
     font-weight: 600;
 }
 
+.select-all-btn {
+    padding: 8px 16px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.select-all-btn:hover {
+    background: #5568d3;
+}
+
+.select-all-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .day-checkboxes {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: 12px;
-    margin-bottom: 20px;
+    display: flex;
+    flex-direction: row;
+    gap: 16px;
+    flex-wrap: wrap;
 }
 
 .day-checkbox-group {
@@ -693,4 +804,151 @@
     background: #f5f5f5;
     color: #999;
     cursor: not-allowed;
+}
+
+/* Day Schedules Section - New Selected Days */
+.day-schedules-section {
+    margin: 40px 0 30px 0;
+    padding: 25px;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    border-radius: 12px;
+    border: 3px solid #667eea;
+    animation: slideInUp 0.4s ease-out;
+}
+
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.day-schedules-section h4 {
+    font-size: 1.3rem;
+    color: #333;
+    margin-bottom: 25px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.day-schedules-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+}
+
+.day-schedule-card {
+    background: white;
+    border: 2px solid #e0e7ff;
+    border-radius: 12px;
+    padding: 0;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+    transition: all 0.3s ease-in-out;
+}
+
+.day-schedule-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 20px rgba(102, 126, 234, 0.25);
+    border-color: #667eea;
+}
+
+.day-card-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 15px;
+    text-align: center;
+}
+
+.day-card-header h5 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: white;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.day-card-content {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.time-input-group,
+.duration-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.time-input-group label,
+.duration-input-group label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #333;
+}
+
+.time-input-group input,
+.duration-input-group select {
+    padding: 10px 12px;
+    border: 1.5px solid #ddd;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    transition: all 0.2s ease-in-out;
+    background: white;
+}
+
+.time-input-group input:focus,
+.duration-input-group select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+}
+
+.time-input-group input:disabled,
+.duration-input-group select:disabled {
+    background: #f5f5f5;
+    color: #999;
+    cursor: not-allowed;
+    border-color: #e0e0e0;
+}
+
+.duration-input-group select {
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23333' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+}
+
+.duration-input-group select:disabled {
+    opacity: 0.6;
+}
+
+/* Responsive Grid for Schedule Cards */
+@media (max-width: 1200px) {
+    .schedules-cards-container {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .day-schedules-grid {
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    }
+}
+
+@media (max-width: 768px) {
+    .schedules-cards-container {
+        grid-template-columns: repeat(1, 1fr);
+    }
+
+    .day-schedules-grid {
+        grid-template-columns: 1fr;
+    }
 }

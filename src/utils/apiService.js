@@ -36,6 +36,16 @@ api.interceptors.response.use(
     }
 );
 
+export const getData = async (url) => {
+    const response = await api.get(url);
+    return response;
+}
+
+export const postData = async (url, data) => {
+    const response = await api.post(url, data);
+    return response;
+}
+
 /**
  * Fetch all users from database
  * @returns {Promise<Array>} Array of users with all fields

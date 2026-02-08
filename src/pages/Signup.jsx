@@ -4,6 +4,7 @@ import { toast } from "react-toastify";
 import MyInput from "../components/MyInputs";
 import MyButton from "../components/MyButtons";
 import "../styles/Signup.css";
+import { postData } from "../utils/apiService";
 
 export default function Signup() {
     const navigate = useNavigate();
@@ -45,27 +46,15 @@ export default function Signup() {
         try {
             setLoading(true);
 
-            const response = await fetch(
-                "http://localhost:8080/hospital/users/register",
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${localStorage.getItem("token")}`
-                    },
-                    body: JSON.stringify({
-                        name,
-                        email,
-                        password,
-                        rid: role_ID || 2
-                    })
-                }
-            );
+            const response = await postData("/users/register", {
+                name,
+                email,
+                password,
+                rid: role_ID || 2
+            });
 
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.message || "Signup failed");
+            if (response.status !== 200 && response.status !== 201) {
+                throw new Error(response.data?.message || "Signup failed");
             }
 
             toast.success("User registered successfully");

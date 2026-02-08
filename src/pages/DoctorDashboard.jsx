@@ -3,9 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { Icon } from "@iconify/react";
 import { toast } from "react-toastify";
 // import Pagination from "../components/Pagination.jsx";
+import DoctorPrescriptionModal from "../components/DoctorPrescriptionModal";
 import "../styles/DoctorDashboard.css";
-
-const API_BASE_URL = "http://localhost:8080/hospital";
+import { getData } from "../utils/apiService";
 
 export default function DoctorDashboard() {
     const navigate = useNavigate();
@@ -13,13 +13,18 @@ export default function DoctorDashboard() {
     const [appointments, setAppointments] = useState([]);
     const [loading, setLoading] = useState(true);
 
+    // Doctor Prescription Modal State
+    const [showPrescriptionModal, setShowPrescriptionModal] = useState(false);
+    const [selectedAppointment, setSelectedAppointment] = useState(null);
+
+
     useEffect(() => {
         const loadDashboardData = async () => {
             const stored = localStorage.getItem("currentUser");
             const token = localStorage.getItem("token");
             const currentUser = stored ? JSON.parse(stored) : null;
 
-            if (!currentUser || !token || !(currentUser.role_ID === 1 || currentUser.isDoctor)) {
+            if (!currentUser || !token || !(currentUser.role_ID == 1)) {
                 navigate("/");
                 return;
             }
@@ -29,31 +34,35 @@ export default function DoctorDashboard() {
                 // 1. Fetch Specializations (to map spec_ID to name)
                 let specializations = [];
                 try {
-                    const specRes = await fetch(`${API_BASE_URL}/users/get-doctor-specialities`, {
-                        headers: { "Authorization": `Bearer ${token}` }
-                    });
-                    if (specRes.ok) {
-                        specializations = await specRes.json();
+                    const specRes = await getData("/users/get-doctor-specialities");
+                    if (specRes.status === 200) {
+                        specializations = specRes.data;
                     }
                 } catch (err) {
                     console.warn("Failed to fetch specializations", err);
                 }
 
+                // 2. Fetch Patients (to map patient_ID to name/contact)
+                let patientsList = [];
+                try {
+                    const patRes = await getData("/patients/show-patients");
+                    if (patRes.status === 200) {
+                        const patData = patRes.data;
+                        patientsList = patData.patients || patData.data || (Array.isArray(patData) ? patData : []) || [];
+                    }
+                } catch (err) {
+                    console.warn("Failed to fetch patients", err);
+                }
+
                 // 3. Fetch Doctor Profile
                 let currentDoctor = null;
                 try {
-                    const docRes = await fetch(`${API_BASE_URL}/users/show-all-doctors`, {
-                        method: "GET",
-                        headers: {
-                            "Content-Type": "application/json",
-                            "Authorization": `Bearer ${token}`
-                        }
-                    });
+                    const docRes = await getData("/users/show-all-doctors");
 
-                    if (docRes.ok) {
-                        const docData = await docRes.json();
+                    if (docRes.status === 200) {
+                        const docData = docRes.data;
                         const allDoctors = Array.isArray(docData) ? docData : docData.users || [];
-                        currentDoctor = allDoctors.find(d => d.user_Id === currentUser.id || d.email === currentUser.email);
+                        currentDoctor = allDoctors.find(d => d.user_Id == currentUser.id || d.email === currentUser.email);
                     }
                 } catch (err) {
                     console.warn("Could not fetch doctor list:", err);
@@ -65,15 +74,20 @@ export default function DoctorDashboard() {
                         user_Id: currentUser.id,
                         email: currentUser.email,
                         name: currentUser.name || "Doctor",
-                        specialization: "General"
+                        specialization: currentUser.speciality || currentUser.specialization || "General"
                     };
                 }
 
                 // Resolve specialization name
                 let specName = currentDoctor.specialization || currentDoctor.speciality;
-                if (currentDoctor.spec_ID && specializations.length > 0) {
-                    const s = specializations.find(sp => sp.id === currentDoctor.spec_ID);
+                const specId = currentDoctor.spec_ID || currentDoctor.spz_ID;
+                if (specId && specializations.length > 0) {
+                    const s = specializations.find(sp => sp.id == specId);
                     if (s) specName = s.speciality;
+                }
+
+                if (!specName && (currentUser.speciality || currentUser.specialization)) {
+                    specName = currentUser.speciality || currentUser.specialization;
                 }
 
                 setDoctor({
@@ -84,23 +98,25 @@ export default function DoctorDashboard() {
 
                 // 4. Fetch Appointments
                 try {
-                    const apptRes = await fetch(`${API_BASE_URL}/appointments/show-appointments?doctor_id=${currentDoctor.user_Id || currentDoctor.id}`, {
-                        headers: { "Authorization": `Bearer ${token}` }
-                    });
+                    const apptRes = await getData(`/appointments/show-appointments?doctor_id=${currentDoctor.user_Id || currentDoctor.id}`);
 
-                    if (apptRes.ok) {
-                        const apptData = await apptRes.json();
-                        const myAppts = Array.isArray(apptData) ? apptData : apptData.appointments || [];
+                    if (apptRes.status === 200) {
+                        const apptData = apptRes.data;
+                        const myAppts = Array.isArray(apptData) ? apptData : apptData.appointments || apptData.data || [];
 
                         // Map to display format
-                        const formattedAppts = myAppts.map(a => {
+                        const formattedAppts = myAppts.map(appt => {
+                            const patient = Array.isArray(patientsList)
+                                ? patientsList.find(p => p.id == appt.patient_ID || p.patient_id == appt.patient_ID)
+                                : null;
+
                             return {
-                                id: a.id || a.appointment_id,
-                                patientName: a.patient_name || a.patientName || "Unknown",
-                                contact: a.contact || a.patient_contact || "N/A",
-                                date: a.appointment_date || a.date,
-                                time: a.appointment_time || a.time,
-                                status: a.appointment_status || a.status || "Pending"
+                                id: appt.id || appt.appointment_id,
+                                patientName: String(patient?.patient_name || patient?.name || 'Unknown Patient'),
+                                contact: String(patient?.contact || appt.contact || "Not provided"),
+                                date: appt.appointment_date || appt.date,
+                                time: appt.appointment_time || appt.time,
+                                status: String(appt.appointment_status || appt.status || "Pending")
                             };
                         });
 
@@ -120,6 +136,17 @@ export default function DoctorDashboard() {
 
         loadDashboardData();
     }, [navigate]);
+
+    const openPrescriptionModal = (appointment) => {
+        setSelectedAppointment(appointment);
+        setShowPrescriptionModal(true);
+    };
+
+    const closePrescriptionModal = () => {
+        setSelectedAppointment(null);
+        setShowPrescriptionModal(false);
+    };
+
 
 
     if (loading) {
@@ -190,6 +217,7 @@ export default function DoctorDashboard() {
                                     <th>Date</th>
                                     <th>Time</th>
                                     <th>Status</th>
+                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -206,6 +234,16 @@ export default function DoctorDashboard() {
                                                 {appt.status}
                                             </span>
                                         </td>
+                                        <button
+                                            type="button"
+                                            className="table-btn checkup"
+                                            title="Doctor Prescription"
+                                            onClick={() => openPrescriptionModal(appt)}
+                                            disabled={appt.status === "Checked"}
+                                        >
+                                            <Icon icon="mdi:clipboard-check-outline" />
+                                        </button>
+
                                     </tr>
                                 ))}
                             </tbody>
@@ -213,6 +251,21 @@ export default function DoctorDashboard() {
                     </div>
                 )}
             </div>
+            {/* Doctor Prescription Modal */}
+            {showPrescriptionModal && (
+                <div style={{ position: "fixed", inset: 0, zIndex: 99999 }}>
+                    <DoctorPrescriptionModal
+                        show
+                        appointment={selectedAppointment}
+                        onClose={closePrescriptionModal}
+                        onSubmit={() => {
+                            toast.success("Prescription saved");
+                            closePrescriptionModal();
+                        }}
+                    />
+                </div>
+            )}
+
         </div>
     );
 }

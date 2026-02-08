@@ -10,6 +10,7 @@ import CheckupModalV2 from "../components/appointment/CheckupModalV2";
 
 import "../styles/Appointment.css";
 import { appointmentStatuses } from "../utils/functions";
+import { getData } from "../utils/apiService";
 
 const API_BASE_URL = "http://localhost:8080/hospital";
 
@@ -30,6 +31,7 @@ export default function Appointment() {
     const [selectedTime, setSelectedTime] = useState("");
     const [contact, setContact] = useState("");
     const [availableSlots, setAvailableSlots] = useState([]);
+    const [scheduleId, setScheduleId] = useState(null);
     const [showModal, setShowModal] = useState(false);
     const ModalLabel = "Schedule New Appointment";
 
@@ -177,10 +179,13 @@ export default function Appointment() {
             // Fetch doctors
             let doctorsData = [];
             try {
-                const doctorsRes = await fetch(`${API_BASE_URL}/users/show-all-doctors`, {
-                    method: "GET",
-                    headers,
-                });
+                const doctorsRes = await getData("/users/show-all-doctors");
+                // const doctorsRes = await fetch(`${API_BASE_URL}/users/show-all-doctors`, {
+                //     method: "GET",
+                //     headers,
+                // });
+                // console.log("junsif ", doctorsRes)
+                // console.log("junsif ", doctorsRes1)
 
                 if (doctorsRes.status === 401) {
                     toast.error("Please log in again");
@@ -189,8 +194,8 @@ export default function Appointment() {
                     return;
                 }
 
-                if (doctorsRes.ok) {
-                    const response = await doctorsRes.json();
+                if (doctorsRes.status === 200) {
+                    const response = doctorsRes.data; //await doctorsRes.json();
                     doctorsData = response.users || response.data || response || [];
                 } else {
                     console.warn("Failed to fetch doctors:", doctorsRes.status);
@@ -297,106 +302,202 @@ export default function Appointment() {
         filterAppointments();
     }, [filterAppointments]);
 
-    // Fetch available slots function - normalize backend response and format times to HH:MM
-    const fetchAvailableSlots = useCallback(async () => {
-        if (!selectedDoctor || !selectedDate) {
-            setAvailableSlots([]);
-            setSelectedTime("");
-            return;
-        }
+    // Fetch available slots when doctor and date change
+    useEffect(() => {
+        const fetchAvailableSlots = async () => {
 
-        // Client-side validation for immediate feedback
-        const selectedDateObj = new Date(selectedDate);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        if (selectedDateObj < today) {
-            toast.error("Cannot book appointment for a past date.");
-            setAvailableSlots([]);
-            setSelectedTime("");
-            return;
-        }
-
-        try {
-            const token = localStorage.getItem("token");
-            if (!token) {
-                toast.error("Please log in again.");
+            if (!selectedDoctor || !selectedDate) {
+                setAvailableSlots([]);
+                setSelectedTime("");
                 return;
             }
 
-            const docId = parseInt(selectedDoctor, 10) || selectedDoctor;
 
-            // Use the backend endpoint to get available slots
-            const response = await fetch(`${API_BASE_URL}/appointments/create-appointment`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({ doc_id: docId, doc_apt_date: selectedDate }),
-            });
+            // Client-side validation for immediate feedback
+            const selectedDateObj = new Date(selectedDate);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
 
-            if (!response.ok) {
-                if (response.status === 404) {
-                    throw new Error("API Endpoint not found (404). Please check the URL.");
-                }
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.message || errorData.error || `Server Error: ${response.status}`);
-            }
-
-            const raw = await response.json();
-            console.debug("create-appointment raw response:", raw);
-
-            // Backend may return array directly or an object containing the array in different keys
-            let slots = [];
-            if (Array.isArray(raw)) slots = raw;
-            else if (Array.isArray(raw.data)) slots = raw.data;
-            else if (Array.isArray(raw.slots)) slots = raw.slots;
-            else if (Array.isArray(raw.available_slots)) slots = raw.available_slots;
-
-            // Normalize times to 'HH:MM' (remove seconds) and dedupe/sort
-            const normalized = slots
-                .map(s => String(s || "").trim())
-                .filter(s => s.length > 0)
-                .map(s => {
-                    // support formats like '09:00:00' or '9:00'
-                    const parts = s.split(":");
-                    if (parts.length >= 2) {
-                        const hh = parts[0].padStart(2, "0");
-                        const mm = parts[1].padStart(2, "0");
-                        return `${hh}:${mm}`;
-                    }
-                    return s;
-                });
-            // Deduplicate then sort by numeric minutes since midnight to avoid lexicographic ordering issues
-            const unique = Array.from(new Set(normalized)).sort((a, b) => {
-                const [ah, am] = a.split(":").map(Number);
-                const [bh, bm] = b.split(":").map(Number);
-                return (ah * 60 + am) - (bh * 60 + bm);
-            });
-            console.debug("normalized available slots:", unique);
-
-            if (unique.length > 0) {
-                setAvailableSlots(unique);
-            } else {
-                toast.info("No available slots for this date, or the doctor is not scheduled.");
+            if (selectedDateObj < today) {
+                toast.error("Cannot book appointment for a past date.");
                 setAvailableSlots([]);
+                setSelectedTime("");
+                return;
             }
 
-            setSelectedTime("");
-        } catch (error) {
-            toast.error(error.message || "An error occurred while fetching time slots.");
-            setAvailableSlots([]);
-            setSelectedTime("");
-        }
-    }, [selectedDoctor, selectedDate]);
+            try {
+                const token = localStorage.getItem("token");
+                if (!token) {
+                    toast.error("Please log in again.");
+                    return;
+                }
 
-    useEffect(() => {
-        if (selectedDoctor && selectedDate) {
-            setSelectedTime("");
-            fetchAvailableSlots();
-        }
-    }, [selectedDoctor, selectedDate, fetchAvailableSlots]);
+                const docId = parseInt(selectedDoctor, 10) || selectedDoctor;
+
+                // First, try the appointments/create-appointment endpoint which returns formattedSlots
+                try {
+                    const createResp = await fetch(`${API_BASE_URL}/appointments/create-appointment`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${token}`,
+                        },
+                        body: JSON.stringify({ doc_id: docId, doc_apt_date: selectedDate })
+                    });
+
+                    if (createResp.ok) {
+                        const createData = await createResp.json();
+                        const formatted = createData.formattedSlots || createData.formatted_slots || createData.slots || [];
+                        if (Array.isArray(formatted) && formatted.length > 0) {
+                            setAvailableSlots(formatted);
+                            setScheduleId(createData.schedule_id || null);
+                            setSelectedTime("");
+                            toast.success(`Found ${formatted.length} available time slots`);
+                            return; // done
+                        }
+                    }
+                } catch (createErr) {
+                    console.warn("appointments/create-appointment failed, falling back to schedule endpoint:", createErr);
+                }
+
+                const response = await fetch(`${API_BASE_URL}/schedule-doctors/show-doctor-timetable/${docId}`, {
+                    method: "GET",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.message || errorData.error || `Server Error: ${response.status}`);
+                }
+
+                const scheduleData = await response.json();
+                // Extract schedule information and calculate available slots
+                let slots = [];
+                let schId = null;
+
+                // Get schedules array
+                const schedules = Array.isArray(scheduleData) ? scheduleData : scheduleData.schedules || [];
+
+                if (schedules.length > 0) {
+                    // Find matching schedule for the selected date
+                    const selectedDateObj = new Date(selectedDate);
+                    const dayOfWeek = selectedDateObj.getDay(); // 0=Sunday, 1=Monday, etc.
+
+                    // Map JS day (0-6) to our day mapping (1-7, where 1=Monday)
+                    const dayMap = { 0: 7, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6 };
+                    const mappedDay = dayMap[dayOfWeek];
+
+                    // Find schedule for this day
+                    const daySchedule = schedules.find(sch => {
+                        const schDay = sch.doc_day_num || sch.day_num || sch.doc_day;
+                        // allow doc_day as string like 'MONDAY'
+                        if (typeof schDay === 'string') {
+                            const name = schDay.charAt(0).toUpperCase() + schDay.slice(1).toLowerCase();
+                            const map = { Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6, Sunday: 7 };
+                            return map[name] === mappedDay;
+                        }
+                        return schDay === mappedDay || schDay === dayOfWeek;
+                    });
+
+                    if (daySchedule) {
+                        console.log("✓ Found schedule for day:", daySchedule);
+
+                        // Parse times and duration
+                        const fromTime = daySchedule.doc_from_time || daySchedule.from_time || daySchedule.doctor_from_time;
+                        const toTime = daySchedule.doc_to_time || daySchedule.to_time || daySchedule.doctor_to_time;
+                        const durationStr = daySchedule.doc_slot_dur || daySchedule.slot_duration || daySchedule.doc_slot_duration || "30";
+
+                        // Extract duration in minutes
+                        const durationMatch = String(durationStr).match(/\d+/);
+                        const duration = durationMatch ? parseInt(durationMatch[0]) : 30;
+
+                        // Generate time slots
+                        slots = generateTimeSlots(fromTime, toTime, duration);
+                        console.log("✓ Generated", slots.length, "time slots");
+
+                        // Try to get schedule_id
+                        schId = daySchedule.schedule_id || daySchedule.id || null;
+                        console.log("✓ Schedule ID:", schId);
+                    } else {
+                        console.warn("No schedule found for day", mappedDay);
+                    }
+                } else {
+                    console.warn("No schedules in response");
+                }
+
+                if (slots && slots.length > 0) {
+                    console.log("✓ Setting", slots.length, "slots into state");
+                    setAvailableSlots(slots);
+                    if (schId) {
+                        setScheduleId(schId);
+                    }
+                    toast.success(`Found ${slots.length} available time slots`);
+                } else {
+                    console.warn("✗ No slots generated");
+                    toast.warning("Doctor is not scheduled for this date");
+                    setAvailableSlots([]);
+                    setScheduleId(null);
+                }
+
+
+                setSelectedTime("");
+            } catch (error) {
+                console.error("❌ Error in fetchAvailableSlots:", error);
+                toast.error(error.message || "An error occurred while fetching time slots.");
+                setAvailableSlots([]);
+                setScheduleId(null);
+                setSelectedTime("");
+            }
+        };
+
+        // Helper function to generate time slots
+        const generateTimeSlots = (fromTime, toTime, durationMinutes) => {
+            const slots = [];
+            if (!fromTime || !toTime) return slots;
+
+            try {
+                // Parse time strings (format: "HH:MM" or "HH:MM AM/PM")
+                const parseTime = (timeStr) => {
+                    const cleaned = timeStr.trim();
+                    const isPM = /PM|pm/.test(cleaned);
+                    const isAM = /AM|am/.test(cleaned);
+
+                    let [hours, minutes] = cleaned.replace(/[APap][Mm]/g, '').trim().split(':').map(Number);
+
+                    if (isAM && hours === 12) hours = 0;
+                    if (isPM && hours !== 12) hours += 12;
+
+                    return hours * 60 + minutes;
+                };
+
+                // Format time to 12-hour with AM/PM
+                const formatTime = (minutes) => {
+                    let hours = Math.floor(minutes / 60);
+                    const mins = minutes % 60;
+                    const period = hours >= 12 ? 'PM' : 'AM';
+                    if (hours > 12) hours -= 12;
+                    if (hours === 0) hours = 12;
+                    return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')} ${period}`;
+                };
+
+                const startMins = parseTime(fromTime);
+                const endMins = parseTime(toTime);
+
+                for (let current = startMins; current < endMins; current += durationMinutes) {
+                    slots.push(formatTime(current));
+                }
+            } catch (err) {
+                console.error("Error generating time slots:", err);
+            }
+
+            return slots;
+        };
+
+        fetchAvailableSlots();
+    }, [selectedDoctor, selectedDate]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -419,6 +520,11 @@ export default function Appointment() {
             apt_time: aptTime,
             apt_status: isEditing ? appointments[editIndex].status : "Pending"
         };
+
+        // Add schedule_id if available (for new appointments) - backend expects doc_sch_id
+        if (scheduleId && !isEditing) {
+            appointmentData.doc_sch_id = scheduleId;
+        }
 
         const url = isEditing
             ? `${API_BASE_URL}/appointments/edit-appointment/${editId}`
@@ -579,6 +685,7 @@ export default function Appointment() {
         setContact("");
         setConflictAppointment(null);
         setAvailableSlots([]);
+        setScheduleId(null);
     };
 
     const openModal = () => {
@@ -713,6 +820,7 @@ export default function Appointment() {
                 )}
 
                 {/* Main Modal */}
+                {console.debug("Passing availableSlots to Modal:", availableSlots)}
                 <Modal
                     ModalLabel={ModalLabel}
                     showModal={showModal}

@@ -3,8 +3,7 @@ import { Icon } from "@iconify/react";
 import { toast } from "react-toastify";
 import Pagination from "../components/Pagination";
 import "../styles/Doctors.css";
-
-const API_BASE_URL = "http://localhost:8080/hospital";
+import { getData, postData } from "../utils/apiService";
 
 export default function Doctors() {
     // Load Doctors - from backend API
@@ -13,93 +12,61 @@ export default function Doctors() {
     // Add state for specializations from backend
     const [specializations, setSpecializations] = useState([]);
 
-    useEffect(() => {
-        const loadData = async () => {
-            setLoading(true);
-            try {
-                const token = localStorage.getItem("token");
+    // Pagination State
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    // eslint-disable-next-line no-unused-vars
+    const [totalDoctors, setTotalDoctors] = useState(0);
+    const recordsPerPage = 5;
 
-                // Load specializations first
-                const specsResponse = await fetch(`${API_BASE_URL}/users/get-doctor-specialities`, {
-                    method: "GET",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${token}`
-                    }
-                });
-
-                if (specsResponse.ok) {
-                    const specsData = await specsResponse.json();
-                    if (Array.isArray(specsData)) {
-                        setSpecializations(specsData);
-                    }
+    // Load Specializations
+    const loadSpecializations = async () => {
+        try {
+            const specsResponse = await getData("/users/get-doctor-specialities");
+            if (specsResponse.status === 200) {
+                const specsData = specsResponse.data;
+                if (Array.isArray(specsData)) {
+                    setSpecializations(specsData);
                 }
+            }
+        } catch (error) {
+            console.error("Error loading specializations", error);
+        }
+    };
 
-                // Load doctors
-                const doctorsResponse = await fetch(`${API_BASE_URL}/users/show-all-doctors`, {
-                    method: "GET",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${token}`
-                    }
-                });
+    // Load Doctors
+    const loadDoctors = async (page = "firstPage") => {
+        setLoading(true);
+        try {
+            const response = await getData(`/users/show-all-doctors?page=${page}`);
 
-                if (doctorsResponse.ok) {
-                    const doctorsData = await doctorsResponse.json();
-                    const allUsers = Array.isArray(doctorsData) ? doctorsData : doctorsData.users || [];
-
-                    // DEBUG: Log first user to see structure
-                    if (allUsers.length > 0) {
-                        console.log("First user object:", allUsers[0]);
-                        console.log("Keys in first user:", Object.keys(allUsers[0]));
-                    }
-
-                    // IMPORTANT: Check what field indicates a doctor
-                    // Based on your DB, it might be role_id = 1
-                    const doctorsList = allUsers.filter(user => {
-                        // Check for role_id = 1 (doctor)
-                        if (user.role_id === 1 || user.role_id === '1') {
-                            return true;
-                        }
-
-                        // Check for role field
-                        if (user.role) {
-                            const role = user.role.toString().toLowerCase();
-                            return role.includes('doctor') || role === '1';
-                        }
-
-                        // If no role field, check other possibilities
-                        if (user.user_type === 'doctor' || user.type === 'doctor') {
-                            return true;
-                        }
-
-                        return false;
-                    });
-
-                    setDoctors(doctorsList);
+            if (response.status === 200) {
+                const data = response.data;
+                if (data && data.allDoctors) {
+                    setDoctors(data.allDoctors);
+                    setCurrentPage(Number(data.currentPage) || 1);
+                    setTotalDoctors(Number(data.totalDoctors) || 0);
+                    setTotalPages(Math.ceil((Number(data.totalDoctors) || 0) / recordsPerPage));
                 } else {
                     setDoctors([]);
+                    setTotalPages(0);
                 }
-
-                // eslint-disable-next-line no-unused-vars
-            } catch (error) {
-                toast.error("Error loading data");
+            } else {
                 setDoctors([]);
-            } finally {
-                setLoading(false);
             }
-        };
+            // eslint-disable-next-line no-unused-vars
+        } catch (error) {
+            toast.error("Error loading doctors");
+            setDoctors([]);
+        } finally {
+            setLoading(false);
+        }
+    };
 
-        loadData();
+    useEffect(() => {
+        loadSpecializations();
+        loadDoctors("firstPage");
     }, []);
-
-    // Pagination
-    const [currentPage, setCurrentPage] = useState(1);
-    const recordsPerPage = 5;
-    const lastIndex = currentPage * recordsPerPage;
-    const firstIndex = lastIndex - recordsPerPage;
-    const paginatedDoctors = doctors.slice(firstIndex, lastIndex);
-    const totalPages = Math.ceil(doctors.length / recordsPerPage);
 
     const [showModal, setShowModal] = useState(false);
     const [editIndex, setEditIndex] = useState(null);
@@ -130,45 +97,31 @@ export default function Doctors() {
                 name: doctorName,
                 email: email,
                 spz_ID: specIdNum,
-                contact: contact ? parseInt(contact) : 0
+                contact: contact,
+                password: "MinimumPass123!" // Workaround: Backend requires password field
             };
 
             try {
-                const token = localStorage.getItem("token");
-                const response = await fetch(`${API_BASE_URL}/users/update-user/${existingDoctor.user_Id}`, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${token}`
-                    },
-                    body: JSON.stringify(updateData)
-                });
+                const response = await postData(`/users/update-user/${existingDoctor.user_Id}`, updateData);
 
-                if (response.ok) {
+                if (response.status === 200) {
                     // eslint-disable-next-line no-unused-vars
-                    const responseData = await response.json();
-
-                    const updatedDoctors = [...doctors];
-                    updatedDoctors[editIndex] = {
-                        ...existingDoctor,
-                        user_name: doctorName,
-                        user_email: email,
-                        spec_ID: specIdNum,
-                        specialization: selectedSpec.speciality,
-                        contact: contact
-                    };
-
-                    setDoctors(updatedDoctors);
+                    const responseData = response.data;
+                    await loadDoctors(currentPage);
                     toast.success(`Doctor updated! Specialization: ${selectedSpec.speciality}`);
                     resetForm();
 
                 } else {
-                    const errorData = await response.json();
+                    const errorData = response.data;
                     toast.error(errorData.message || "Failed to update doctor");
                 }
-                // eslint-disable-next-line no-unused-vars
             } catch (error) {
-                toast.error("Network error");
+                console.error("Error updating doctor:", error);
+                if (error.response && error.response.data) {
+                    toast.error(error.response.data.message || "Failed to update doctor");
+                } else {
+                    toast.error(error.message || "Network error");
+                }
             }
         } else {
             toast.error("Please select a specialization");
@@ -176,8 +129,7 @@ export default function Doctors() {
     }
 
     function handleEdit(index) {
-        const actualIndex = index + firstIndex;
-        const d = doctors[actualIndex];
+        const d = doctors[index];
 
         setDoctorId(d.user_Id);
         setDoctorName(d.user_name || "");
@@ -199,39 +151,35 @@ export default function Doctors() {
         setSpecializationName(currentSpecName);
         setContact(d.contact ? d.contact.toString() : "");
         setEmail(d.user_email || "");
-        setEditIndex(actualIndex);
+        setEditIndex(index);
         setShowModal(true);
     }
 
     async function handleDelete(index) {
         if (window.confirm("Are you sure you want to delete this doctor?")) {
-            const actualIndex = index + firstIndex;
-            const doctorToDelete = doctors[actualIndex];
+            const doctorToDelete = doctors[index];
 
             try {
-                const token = localStorage.getItem("token");
-                const response = await fetch(`${API_BASE_URL}/users/delete-user/${doctorToDelete.user_Id}`, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${token}`
-                    }
-                });
+                const response = await postData(`/users/delete-user/${doctorToDelete.user_Id}`);
 
-                if (response.ok) {
-                    setDoctors(prev => prev.filter(doc => doc.user_Id !== doctorToDelete.user_Id));
+                if (response.status === 200) {
+                    if (doctors.length === 1 && currentPage > 1) {
+                        await loadDoctors(currentPage - 1);
+                    } else {
+                        await loadDoctors(currentPage);
+                    }
                     toast.success("Doctor deleted successfully!");
-
-                    if (paginatedDoctors.length === 1 && currentPage > 1) {
-                        setCurrentPage(prev => Math.max(1, prev - 1));
-                    }
                 } else {
-                    const errorData = await response.json();
+                    const errorData = response.data;
                     toast.error(errorData.message || "Failed to delete doctor");
                 }
-                // eslint-disable-next-line no-unused-vars
             } catch (error) {
-                toast.error("Error deleting doctor");
+                console.error("Error deleting doctor:", error);
+                if (error.response && error.response.data) {
+                    toast.error(error.response.data.message || "Failed to delete doctor");
+                } else {
+                    toast.error(error.message || "Error deleting doctor");
+                }
             }
         }
     }
@@ -249,11 +197,11 @@ export default function Doctors() {
 
     const handleNavigation = (direction) => {
         if (direction === "next" && currentPage < totalPages) {
-            setCurrentPage(prev => prev + 1);
+            loadDoctors(currentPage + 1);
         }
 
         if (direction === "prev" && currentPage > 1) {
-            setCurrentPage(prev => prev - 1);
+            loadDoctors(currentPage - 1);
         }
     };
 
@@ -311,7 +259,7 @@ export default function Doctors() {
                                 </thead>
 
                                 <tbody>
-                                    {paginatedDoctors.map((doctor, index) => (
+                                    {doctors.map((doctor, index) => (
                                         <tr key={doctor.user_Id || index}>
                                             <td>{doctor.user_Id}</td>
                                             <td>{doctor.user_name || doctor.name || "N/A"}</td>

@@ -25,9 +25,17 @@ export default function Modal({
     isContactAutoFilled,
     onRescheduleClick
 }) {
-    if (!showModal) return null;
-
     const isEditMode = editIndex !== null;
+
+    // Add useEffect to log slot updates
+    React.useEffect(() => {
+        console.log("🔄 Modal availableSlots updated:", availableSlots);
+        if (availableSlots.length > 0) {
+            console.log("✓ Slots available for display:", availableSlots.slice(0, 5), "...");
+        }
+    }, [availableSlots]);
+
+    if (!showModal) return null;
 
     const patientOptions = patients.map(p => ({
         value: p.id,
@@ -53,7 +61,47 @@ export default function Modal({
     };
 
     // Time slot options
-    const timeOptions = availableSlots.map(slot => ({
+    // Normalize different possible shapes of `availableSlots` coming from the backend
+    const normalizeSlots = (slots) => {
+        if (!slots) return [];
+        // If API returned an object with formattedSlots
+        if (!Array.isArray(slots) && typeof slots === 'object') {
+            if (Array.isArray(slots.formattedSlots)) return slots.formattedSlots;
+            // try other possible keys
+            if (Array.isArray(slots.slots)) return slots.slots;
+            return [];
+        }
+
+        // If it's an array
+        if (Array.isArray(slots)) {
+            // If array contains a single object that holds formattedSlots
+            if (slots.length === 1 && typeof slots[0] === 'object' && Array.isArray(slots[0].formattedSlots)) {
+                return slots[0].formattedSlots;
+            }
+
+            // Map elements to strings: support strings or objects with a common field
+            return slots.map(s => {
+                if (typeof s === 'string') return s;
+                if (!s) return '';
+                if (typeof s === 'object') {
+                    if (typeof s.value === 'string') return s.value;
+                    if (typeof s.slot === 'string') return s.slot;
+                    if (Array.isArray(s.formattedSlots)) return s.formattedSlots.join(', ');
+                    // fallback to JSON string (shouldn't happen in normal cases)
+                    try { return JSON.stringify(s); }
+                    // eslint-disable-next-line no-unused-vars
+                    catch (e) { return String(s); }
+                }
+                return String(s);
+            }).flat();
+        }
+
+        return [];
+    };
+
+    const normalizedSlots = normalizeSlots(availableSlots || []);
+
+    const timeOptions = normalizedSlots.map(slot => ({
         value: slot,
         label: slot
     }));
@@ -173,6 +221,7 @@ export default function Modal({
                         {/* Time */}
                         <div className="form-group">
                             <label><Icon icon="mdi:clock" /> Select Time</label>
+                            {/* {console.log("Rendering time select - timeOptions:", timeOptions)} */}
                             <Select
                                 options={timeOptions}
                                 value={timeOptions.find(opt => opt.value === selectedTime) || null}
@@ -183,6 +232,10 @@ export default function Modal({
                                 classNamePrefix="react-select"
                                 noOptionsMessage={() => slotMessage}
                                 styles={{ menu: p => ({ ...p, zIndex: 9999 }) }}
+                                formatOptionLabel={(option) => {
+                                    // console.log("Rendering option:", option);
+                                    return option.label;
+                                }}
                             />
                         </div>
                     </div>
