@@ -9,8 +9,8 @@ export default function Modal({
     ModalLabel,
     editIndex,
     handleSubmit,
-    patients,
-    doctors,
+    patients = [], // Ensure default array
+    doctors = [],  // Ensure default array
     selectedPatient,
     selectedDoctor,
     selectedDate,
@@ -27,32 +27,50 @@ export default function Modal({
 }) {
     const isEditMode = editIndex !== null;
 
-    // Add useEffect to log slot updates
-    React.useEffect(() => {
-        console.log("🔄 Modal availableSlots updated:", availableSlots);
-        if (availableSlots.length > 0) {
-            console.log("✓ Slots available for display:", availableSlots.slice(0, 5), "...");
-        }
-    }, [availableSlots]);
+
 
     if (!showModal) return null;
 
-    const patientOptions = patients.map(p => ({
-        value: p.id,
-        label: `ID: ${p.id} - ${p.patient_name || p.name} (${p.contact})`
-    }));
+    // FIXED: Better patient options with null checks
+    const patientOptions = Array.isArray(patients) ? patients.map(p => {
+        if (!p) return null;
+        const patientId = p.id || p.patient_id || "";
+        const patientName = p.patient_name || p.name || "Unknown Patient";
+        const patientContact = p.contact || "No contact";
 
-    const doctorOptions = doctors.map(d => ({
-        value: d.id || d.user_Id,
-        label: `ID: ${d.id || d.user_Id} - ${d.user_name || d.name} (${d.specialization || d.speciality || "General"})`
-    }));
+        return {
+            value: patientId.toString(),
+            label: `ID: ${patientId} - ${patientName} (${patientContact})`
+        };
+    }).filter(Boolean) : [];
+
+    // FIXED: Better doctor options with null checks
+    const doctorOptions = Array.isArray(doctors) ? doctors.map(d => {
+        if (!d) return null;
+        const doctorId = d.id || d.user_Id || d.doctor_id || "";
+        const doctorName = d.user_name || d.name || "Unknown Doctor";
+        const specialization = d.specialization || d.speciality || d.spec_name || "General";
+
+        return {
+            value: doctorId.toString(),
+            label: `ID: ${doctorId} - ${doctorName} (${specialization})`
+        };
+    }).filter(Boolean) : [];
+
 
     const handlePatientSelectChange = (selectedOption) => {
+
         if (selectedOption) {
             setSelectedPatient(selectedOption.value);
-            const p = patients.find(pat => pat.id == selectedOption.value);
-            if (p) {
-                setContact(p.contact || "");
+            // Find patient and set contact
+            const patient = patients.find(p => {
+                const pId = p.id || p.patient_id;
+                return pId && pId.toString() === selectedOption.value.toString();
+            });
+
+            if (patient) {
+                setContact(patient.contact || "");
+
             }
         } else {
             setSelectedPatient("");
@@ -60,46 +78,37 @@ export default function Modal({
         }
     };
 
-    // Time slot options
-    // Normalize different possible shapes of `availableSlots` coming from the backend
+    // FIXED: Better slot normalization
     const normalizeSlots = (slots) => {
         if (!slots) return [];
-        // If API returned an object with formattedSlots
-        if (!Array.isArray(slots) && typeof slots === 'object') {
-            if (Array.isArray(slots.formattedSlots)) return slots.formattedSlots;
-            // try other possible keys
-            if (Array.isArray(slots.slots)) return slots.slots;
-            return [];
-        }
 
-        // If it's an array
+        // If it's already an array of strings
         if (Array.isArray(slots)) {
-            // If array contains a single object that holds formattedSlots
-            if (slots.length === 1 && typeof slots[0] === 'object' && Array.isArray(slots[0].formattedSlots)) {
-                return slots[0].formattedSlots;
-            }
-
-            // Map elements to strings: support strings or objects with a common field
-            return slots.map(s => {
-                if (typeof s === 'string') return s;
-                if (!s) return '';
-                if (typeof s === 'object') {
-                    if (typeof s.value === 'string') return s.value;
-                    if (typeof s.slot === 'string') return s.slot;
-                    if (Array.isArray(s.formattedSlots)) return s.formattedSlots.join(', ');
-                    // fallback to JSON string (shouldn't happen in normal cases)
-                    try { return JSON.stringify(s); }
-                    // eslint-disable-next-line no-unused-vars
-                    catch (e) { return String(s); }
+            return slots.filter(slot => {
+                if (typeof slot === 'string') return slot.trim().length > 0;
+                if (slot && typeof slot === 'object') {
+                    // Handle object slots
+                    if (slot.value) return String(slot.value).trim();
+                    if (slot.label) return String(slot.label).trim();
+                    if (slot.slot) return String(slot.slot).trim();
+                    if (slot.formattedSlot) return String(slot.formattedSlot).trim();
                 }
-                return String(s);
-            }).flat();
+                return false;
+            }).map(slot => {
+                if (typeof slot === 'string') return slot.trim();
+                if (slot.value) return String(slot.value).trim();
+                if (slot.label) return String(slot.label).trim();
+                if (slot.slot) return String(slot.slot).trim();
+                if (slot.formattedSlot) return String(slot.formattedSlot).trim();
+                return String(slot).trim();
+            });
         }
 
         return [];
     };
 
-    const normalizedSlots = normalizeSlots(availableSlots || []);
+    const normalizedSlots = normalizeSlots(availableSlots);
+
 
     const timeOptions = normalizedSlots.map(slot => ({
         value: slot,
@@ -115,7 +124,7 @@ export default function Modal({
         });
     }
 
-    const hasSlots = availableSlots.length > 0;
+    const hasSlots = normalizedSlots.length > 0;
     const needsDoctorAndDate = !selectedDoctor || !selectedDate;
 
     const slotMessage = needsDoctorAndDate
@@ -123,6 +132,18 @@ export default function Modal({
         : !hasSlots
             ? "No available slots for this date"
             : "Select time slot";
+
+    // Find current patient for display
+    const currentPatient = patients.find(p => {
+        const pId = p.id || p.patient_id;
+        return pId && pId.toString() === selectedPatient.toString();
+    });
+
+    // eslint-disable-next-line no-unused-vars
+    const currentDoctor = doctors.find(d => {
+        const dId = d.id || d.user_Id || d.doctor_id;
+        return dId && dId.toString() === selectedDoctor.toString();
+    });
 
     return (
         <div className="modal-overlay" onClick={closeModal}>
@@ -142,14 +163,16 @@ export default function Modal({
                             <label><Icon icon="mdi:account-search" /> Search Patient (ID)</label>
                             <Select
                                 options={patientOptions}
-                                value={patientOptions.find(opt => opt.value == selectedPatient) || null}
+                                value={patientOptions.find(opt => opt.value.toString() === selectedPatient?.toString()) || null}
                                 onChange={handlePatientSelectChange}
                                 placeholder="Search by ID..."
                                 isClearable
                                 isSearchable
                                 classNamePrefix="react-select"
                                 styles={{ menu: p => ({ ...p, zIndex: 9999 }) }}
+                                noOptionsMessage={() => patientOptions.length === 0 ? "No patients found" : "Type to search..."}
                             />
+
                         </div>
 
                         {/* Patient Name */}
@@ -157,11 +180,7 @@ export default function Modal({
                             <label><Icon icon="mdi:account" /> Patient Name</label>
                             <input
                                 type="text"
-                                value={
-                                    patients.find(p => p.id == selectedPatient)?.patient_name ||
-                                    patients.find(p => p.id == selectedPatient)?.name ||
-                                    ""
-                                }
+                                value={currentPatient?.patient_name || currentPatient?.name || ""}
                                 readOnly
                                 placeholder="Select patient first"
                                 className="readonly-input"
@@ -173,15 +192,19 @@ export default function Modal({
                             <label><Icon icon="mdi:doctor" /> Select Doctor</label>
                             <Select
                                 options={doctorOptions}
-                                value={doctorOptions.find(opt => opt.value == selectedDoctor) || null}
-                                onChange={(option) => setSelectedDoctor(option ? option.value : "")}
+                                value={doctorOptions.find(opt => opt.value.toString() === selectedDoctor?.toString()) || null}
+                                onChange={(option) => {
+                                    setSelectedDoctor(option ? option.value : "");
+                                }}
                                 placeholder="Select Doctor..."
                                 isClearable
                                 isSearchable
                                 isDisabled={isEditMode}
                                 classNamePrefix="react-select"
                                 styles={{ menu: p => ({ ...p, zIndex: 9999 }) }}
+                                noOptionsMessage={() => doctorOptions.length === 0 ? "No doctors found" : "Type to search..."}
                             />
+
                         </div>
 
                         {/* Contact */}
@@ -196,11 +219,6 @@ export default function Modal({
                                     className={isContactAutoFilled ? "auto-filled" : ""}
                                     placeholder="Auto-filled when patient selected"
                                 />
-                                {isContactAutoFilled && (
-                                    <span className="auto-fill-badge">
-                                        <Icon icon="mdi:check-circle" /> Auto-filled
-                                    </span>
-                                )}
                             </div>
                         </div>
 
@@ -210,7 +228,9 @@ export default function Modal({
                             <input
                                 type="date"
                                 value={selectedDate}
-                                onChange={(e) => setSelectedDate(e.target.value)}
+                                onChange={(e) => {
+                                    setSelectedDate(e.target.value);
+                                }}
                                 disabled={isEditMode}
                                 min={new Date().toISOString().split("T")[0]}
                                 required
@@ -221,22 +241,22 @@ export default function Modal({
                         {/* Time */}
                         <div className="form-group">
                             <label><Icon icon="mdi:clock" /> Select Time</label>
-                            {/* {console.log("Rendering time select - timeOptions:", timeOptions)} */}
                             <Select
                                 options={timeOptions}
                                 value={timeOptions.find(opt => opt.value === selectedTime) || null}
-                                onChange={(option) => setSelectedTime(option ? option.value : "")}
+                                onChange={(option) => {
+                                    setSelectedTime(option ? option.value : "");
+                                }}
                                 placeholder={slotMessage}
                                 isDisabled={!selectedDoctor || !selectedDate}
                                 isClearable
                                 classNamePrefix="react-select"
                                 noOptionsMessage={() => slotMessage}
                                 styles={{ menu: p => ({ ...p, zIndex: 9999 }) }}
-                                formatOptionLabel={(option) => {
-                                    // console.log("Rendering option:", option);
-                                    return option.label;
-                                }}
                             />
+                            {selectedDoctor && selectedDate && normalizedSlots.length === 0 && (
+                                <small className="text-warning">No available time slots for this doctor on the selected date</small>
+                            )}
                         </div>
                     </div>
 

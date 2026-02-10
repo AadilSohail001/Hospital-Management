@@ -180,13 +180,6 @@ export default function Appointment() {
             let doctorsData = [];
             try {
                 const doctorsRes = await getData("/users/show-all-doctors");
-                // const doctorsRes = await fetch(`${API_BASE_URL}/users/show-all-doctors`, {
-                //     method: "GET",
-                //     headers,
-                // });
-                // console.log("junsif ", doctorsRes)
-                // console.log("junsif ", doctorsRes1)
-
                 if (doctorsRes.status === 401) {
                     toast.error("Please log in again");
                     localStorage.removeItem("token");
@@ -195,8 +188,8 @@ export default function Appointment() {
                 }
 
                 if (doctorsRes.status === 200) {
-                    const response = doctorsRes.data; //await doctorsRes.json();
-                    doctorsData = response.users || response.data || response || [];
+                    const response = doctorsRes.data;
+                    doctorsData = response.allDoctors || response.users || response.data || (Array.isArray(response) ? response : []);
                 } else {
                     console.warn("Failed to fetch doctors:", doctorsRes.status);
                 }
@@ -214,7 +207,7 @@ export default function Appointment() {
 
                 if (patientsRes.ok) {
                     const response = await patientsRes.json();
-                    patientsData = response.patients || response.data || response || [];
+                    patientsData = response.patientsShown || response.patients || response.data || (Array.isArray(response) ? response : []);
                 } else {
                     console.warn("Failed to fetch patients:", patientsRes.status);
                 }
@@ -222,7 +215,7 @@ export default function Appointment() {
                 console.warn("Could not fetch patients:", patientError);
             }
 
-            // Fetch appointments
+            // Fetch appointments - FIXED: No query parameters needed
             let appointmentsList = [];
             try {
                 const appointmentsRes = await fetch(`${API_BASE_URL}/appointments/show-appointments`, {
@@ -231,10 +224,15 @@ export default function Appointment() {
                 });
 
                 if (appointmentsRes.ok) {
-                    const appointmentsData = await appointmentsRes.json();
-                    appointmentsList = Array.isArray(appointmentsData)
-                        ? appointmentsData
-                        : appointmentsData.appointments || appointmentsData.data || [];
+                    const response = await appointmentsRes.json();
+                    // FIXED: Handle the response format correctly
+                    if (response.formattedAppointments) {
+                        appointmentsList = response.formattedAppointments;
+                    } else if (Array.isArray(response)) {
+                        appointmentsList = response;
+                    } else {
+                        appointmentsList = response.appointments || response.data || [];
+                    }
                 } else {
                     console.warn("Could not fetch appointments:", appointmentsRes.status);
                 }
@@ -305,13 +303,11 @@ export default function Appointment() {
     // Fetch available slots when doctor and date change
     useEffect(() => {
         const fetchAvailableSlots = async () => {
-
             if (!selectedDoctor || !selectedDate) {
                 setAvailableSlots([]);
                 setSelectedTime("");
                 return;
             }
-
 
             // Client-side validation for immediate feedback
             const selectedDateObj = new Date(selectedDate);
@@ -334,171 +330,56 @@ export default function Appointment() {
 
                 const docId = parseInt(selectedDoctor, 10) || selectedDoctor;
 
-                // First, try the appointments/create-appointment endpoint which returns formattedSlots
-                try {
-                    const createResp = await fetch(`${API_BASE_URL}/appointments/create-appointment`, {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${token}`,
-                        },
-                        body: JSON.stringify({ doc_id: docId, doc_apt_date: selectedDate })
-                    });
-
-                    if (createResp.ok) {
-                        const createData = await createResp.json();
-                        const formatted = createData.formattedSlots || createData.formatted_slots || createData.slots || [];
-                        if (Array.isArray(formatted) && formatted.length > 0) {
-                            setAvailableSlots(formatted);
-                            setScheduleId(createData.schedule_id || null);
-                            setSelectedTime("");
-                            toast.success(`Found ${formatted.length} available time slots`);
-                            return; // done
-                        }
-                    }
-                } catch (createErr) {
-                    console.warn("appointments/create-appointment failed, falling back to schedule endpoint:", createErr);
-                }
-
-                const response = await fetch(`${API_BASE_URL}/schedule-doctors/show-doctor-timetable/${docId}`, {
-                    method: "GET",
+                // FIXED: Use the correct endpoint with proper payload
+                const response = await fetch(`${API_BASE_URL}/appointments/create-appointment`, {
+                    method: "POST",
                     headers: {
                         "Content-Type": "application/json",
                         Authorization: `Bearer ${token}`,
                     },
+                    body: JSON.stringify({
+                        doc_id: docId,
+                        doc_apt_date: selectedDate
+                    })
                 });
 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({}));
-                    throw new Error(errorData.message || errorData.error || `Server Error: ${response.status}`);
+                    throw new Error(errorData.alert || errorData.message || `Server Error: ${response.status}`);
                 }
 
-                const scheduleData = await response.json();
-                // Extract schedule information and calculate available slots
-                let slots = [];
-                let schId = null;
+                const data = await response.json();
 
-                // Get schedules array
-                const schedules = Array.isArray(scheduleData) ? scheduleData : scheduleData.schedules || [];
+                // FIXED: Handle the response format correctly
+                if (data.formattedSlots && Array.isArray(data.formattedSlots)) {
+                    setAvailableSlots(data.formattedSlots);
+                    setScheduleId(data.schedule_id || null);
+                    setSelectedTime("");
 
-                if (schedules.length > 0) {
-                    // Find matching schedule for the selected date
-                    const selectedDateObj = new Date(selectedDate);
-                    const dayOfWeek = selectedDateObj.getDay(); // 0=Sunday, 1=Monday, etc.
-
-                    // Map JS day (0-6) to our day mapping (1-7, where 1=Monday)
-                    const dayMap = { 0: 7, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6 };
-                    const mappedDay = dayMap[dayOfWeek];
-
-                    // Find schedule for this day
-                    const daySchedule = schedules.find(sch => {
-                        const schDay = sch.doc_day_num || sch.day_num || sch.doc_day;
-                        // allow doc_day as string like 'MONDAY'
-                        if (typeof schDay === 'string') {
-                            const name = schDay.charAt(0).toUpperCase() + schDay.slice(1).toLowerCase();
-                            const map = { Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6, Sunday: 7 };
-                            return map[name] === mappedDay;
-                        }
-                        return schDay === mappedDay || schDay === dayOfWeek;
-                    });
-
-                    if (daySchedule) {
-                        console.log("✓ Found schedule for day:", daySchedule);
-
-                        // Parse times and duration
-                        const fromTime = daySchedule.doc_from_time || daySchedule.from_time || daySchedule.doctor_from_time;
-                        const toTime = daySchedule.doc_to_time || daySchedule.to_time || daySchedule.doctor_to_time;
-                        const durationStr = daySchedule.doc_slot_dur || daySchedule.slot_duration || daySchedule.doc_slot_duration || "30";
-
-                        // Extract duration in minutes
-                        const durationMatch = String(durationStr).match(/\d+/);
-                        const duration = durationMatch ? parseInt(durationMatch[0]) : 30;
-
-                        // Generate time slots
-                        slots = generateTimeSlots(fromTime, toTime, duration);
-                        console.log("✓ Generated", slots.length, "time slots");
-
-                        // Try to get schedule_id
-                        schId = daySchedule.schedule_id || daySchedule.id || null;
-                        console.log("✓ Schedule ID:", schId);
+                    if (data.formattedSlots.length > 0) {
+                        toast.success(`Found ${data.formattedSlots.length} available time slots`);
                     } else {
-                        console.warn("No schedule found for day", mappedDay);
+                        toast.warning("No available slots for this date");
                     }
                 } else {
-                    console.warn("No schedules in response");
-                }
-
-                if (slots && slots.length > 0) {
-                    console.log("✓ Setting", slots.length, "slots into state");
-                    setAvailableSlots(slots);
-                    if (schId) {
-                        setScheduleId(schId);
-                    }
-                    toast.success(`Found ${slots.length} available time slots`);
-                } else {
-                    console.warn("✗ No slots generated");
-                    toast.warning("Doctor is not scheduled for this date");
                     setAvailableSlots([]);
                     setScheduleId(null);
+                    toast.warning("Doctor is not scheduled for this date");
                 }
 
-
-                setSelectedTime("");
             } catch (error) {
-                console.error("❌ Error in fetchAvailableSlots:", error);
-                toast.error(error.message || "An error occurred while fetching time slots.");
+                console.error("Error fetching available slots:", error);
+                toast.error(error.message || "Failed to fetch available time slots");
                 setAvailableSlots([]);
                 setScheduleId(null);
                 setSelectedTime("");
             }
         };
 
-        // Helper function to generate time slots
-        const generateTimeSlots = (fromTime, toTime, durationMinutes) => {
-            const slots = [];
-            if (!fromTime || !toTime) return slots;
-
-            try {
-                // Parse time strings (format: "HH:MM" or "HH:MM AM/PM")
-                const parseTime = (timeStr) => {
-                    const cleaned = timeStr.trim();
-                    const isPM = /PM|pm/.test(cleaned);
-                    const isAM = /AM|am/.test(cleaned);
-
-                    let [hours, minutes] = cleaned.replace(/[APap][Mm]/g, '').trim().split(':').map(Number);
-
-                    if (isAM && hours === 12) hours = 0;
-                    if (isPM && hours !== 12) hours += 12;
-
-                    return hours * 60 + minutes;
-                };
-
-                // Format time to 12-hour with AM/PM
-                const formatTime = (minutes) => {
-                    let hours = Math.floor(minutes / 60);
-                    const mins = minutes % 60;
-                    const period = hours >= 12 ? 'PM' : 'AM';
-                    if (hours > 12) hours -= 12;
-                    if (hours === 0) hours = 12;
-                    return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')} ${period}`;
-                };
-
-                const startMins = parseTime(fromTime);
-                const endMins = parseTime(toTime);
-
-                for (let current = startMins; current < endMins; current += durationMinutes) {
-                    slots.push(formatTime(current));
-                }
-            } catch (err) {
-                console.error("Error generating time slots:", err);
-            }
-
-            return slots;
-        };
-
         fetchAvailableSlots();
     }, [selectedDoctor, selectedDate]);
 
+    // FIXED: handleSubmit function with proper error handling
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!selectedDoctor || !selectedPatient || !selectedDate || !selectedTime) {
@@ -508,17 +389,37 @@ export default function Appointment() {
 
         const isEditing = editIndex !== null;
 
-        // Format time for backend
-        const aptTime = selectedTime.includes(':') && selectedTime.length === 5
-            ? `${selectedTime}:00`
-            : selectedTime;
+        // Format time for backend (convert from "hh:mm A" to "HH:mm:ss")
+        const formatTimeForBackend = (timeStr) => {
+            if (!timeStr) return "";
+
+            // If already in HH:mm format, add seconds
+            if (/^\d{1,2}:\d{2}$/.test(timeStr)) {
+                return `${timeStr}:00`;
+            }
+
+            // Convert from "hh:mm A" format to "HH:mm:ss"
+            try {
+                const time = new Date(`2000-01-01 ${timeStr}`);
+                if (isNaN(time.getTime())) return timeStr;
+
+                const hours = String(time.getHours()).padStart(2, '0');
+                const minutes = String(time.getMinutes()).padStart(2, '0');
+                return `${hours}:${minutes}:00`;
+            } catch (error) {
+                console.error("Error formatting time:", error);
+                return timeStr;
+            }
+        };
+
+        const aptTime = formatTimeForBackend(selectedTime);
 
         const appointmentData = {
             patient_id: parseInt(selectedPatient, 10),
             doc_id: parseInt(selectedDoctor, 10),
             doc_apt_date: selectedDate,
             apt_time: aptTime,
-            apt_status: isEditing ? appointments[editIndex].status : "Pending"
+            apt_status: isEditing ? appointments[editIndex].status : "pending"
         };
 
         // Add schedule_id if available (for new appointments) - backend expects doc_sch_id
@@ -556,10 +457,10 @@ export default function Appointment() {
                         patientName: patient?.patient_name || 'Unknown Patient'
                     });
                 }
-                throw new Error(result.message || result.alert || result.error || `Failed to ${isEditing ? 'update' : 'create'} appointment.`);
+                throw new Error(result.alert || result.message || result.error || `Failed to ${isEditing ? 'update' : 'create'} appointment.`);
             }
 
-            toast.success(result.success || `Appointment ${isEditing ? 'updated' : 'created'} successfully!`);
+            toast.success(result.success || result.alert || `Appointment ${isEditing ? 'updated' : 'created'} successfully!`);
             fetchData();
             closeModal();
 
@@ -599,7 +500,7 @@ export default function Appointment() {
             const result = await response.json().catch(() => ({}));
 
             if (!response.ok) {
-                throw new Error(result.message || result.alert || "Failed to delete appointment.");
+                throw new Error(result.alert || result.message || "Failed to delete appointment.");
             }
 
             toast.success(result.alert || result.success || "Appointment deleted successfully!");
@@ -609,6 +510,7 @@ export default function Appointment() {
         }
     };
 
+    // FIXED: handleEdit function with proper time formatting
     const handleEdit = (index) => {
         const appt = filteredAppointments[index];
         if (!appt) return;
@@ -618,14 +520,39 @@ export default function Appointment() {
         setSelectedPatient(appt.patientId?.toString() || "");
         setSelectedDoctor(appt.doctorId?.toString() || "");
         setSelectedDate(appt.date || "");
-        // Normalize time to HH:MM for the time select
+
+        // FIXED: Convert backend time format (hh:mm:ss A) to input format (HH:MM)
         let timeVal = appt.time || "";
         if (timeVal) {
-            const parts = String(timeVal).split(":");
-            if (parts.length >= 2) {
-                timeVal = `${parts[0].padStart(2, "0")}:${parts[1].padStart(2, "0")}`;
+            try {
+                // Handle formats like "09:00:00 AM" or "14:30:00"
+                const timeParts = String(timeVal).split(' ');
+                let timeStr = timeParts[0]; // Get "09:00:00"
+
+                if (timeParts.length > 1 && (timeParts[1].toUpperCase() === 'AM' || timeParts[1].toUpperCase() === 'PM')) {
+                    // Convert from 12-hour format
+                    const [time, period] = timeParts;
+                    const [hours, minutes] = time.split(':');
+                    let hour = parseInt(hours, 10);
+
+                    if (period.toUpperCase() === 'PM' && hour < 12) {
+                        hour += 12;
+                    } else if (period.toUpperCase() === 'AM' && hour === 12) {
+                        hour = 0;
+                    }
+
+                    timeVal = `${String(hour).padStart(2, '0')}:${minutes.padStart(2, '0')}`;
+                } else {
+                    // Already in 24-hour format or just HH:MM
+                    const [hours, minutes] = timeStr.split(':');
+                    timeVal = `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')}`;
+                }
+            } catch (error) {
+                console.error("Error parsing time:", timeVal, error);
+                timeVal = "";
             }
         }
+
         setSelectedTime(timeVal || "");
         setContact(appt.contact || "");
         setEditIndex(originalIndex);
@@ -633,17 +560,47 @@ export default function Appointment() {
         setShowModal(true);
     };
 
+    // FIXED: toggleStatus function with proper data format
     const toggleStatus = async (index) => {
         const appointmentToUpdate = filteredAppointments[index];
         if (!appointmentToUpdate || !appointmentToUpdate.id) return;
 
-        const newStatus = appointmentToUpdate.status === "Pending" ? "Checked" : "Pending";
+        const newStatus = appointmentToUpdate.status === "pending" ? "confirmed" : "pending";
 
-        const aptTime = appointmentToUpdate.time.includes(':') && appointmentToUpdate.time.length === 5
-            ? `${appointmentToUpdate.time}:00`
-            : appointmentToUpdate.time;
+        // Format time for backend
+        const formatTimeForBackend = (timeStr) => {
+            if (!timeStr) return "";
+
+            try {
+                // Handle formats like "09:00 AM" or "14:30"
+                const timeParts = String(timeStr).split(' ');
+                if (timeParts.length > 1 && (timeParts[1].toUpperCase() === 'AM' || timeParts[1].toUpperCase() === 'PM')) {
+                    const [time, period] = timeParts;
+                    const [hours, minutes] = time.split(':');
+                    let hour = parseInt(hours, 10);
+
+                    if (period.toUpperCase() === 'PM' && hour < 12) {
+                        hour += 12;
+                    } else if (period.toUpperCase() === 'AM' && hour === 12) {
+                        hour = 0;
+                    }
+
+                    return `${String(hour).padStart(2, '0')}:${minutes.padStart(2, '0')}:00`;
+                } else {
+                    // Already in 24-hour format
+                    const [hours, minutes] = timeStr.split(':');
+                    return `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')}:00`;
+                }
+            } catch (error) {
+                console.error("Error formatting time:", error);
+                return timeStr;
+            }
+        };
+
+        const aptTime = formatTimeForBackend(appointmentToUpdate.time);
 
         const updateData = {
+            apt_Id: appointmentToUpdate.id,
             patient_id: appointmentToUpdate.patientId,
             doc_id: appointmentToUpdate.doctorId,
             doc_apt_date: appointmentToUpdate.date,
@@ -654,7 +611,7 @@ export default function Appointment() {
         try {
             const token = localStorage.getItem("token");
             const response = await fetch(`${API_BASE_URL}/appointments/edit-appointment/${appointmentToUpdate.id}`, {
-                method: "POST", // Note: PUT or PATCH is more appropriate for updates
+                method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                     Authorization: `Bearer ${token}`,
@@ -665,7 +622,7 @@ export default function Appointment() {
             const result = await response.json();
 
             if (!response.ok) {
-                throw new Error(result.message || result.alert || "Failed to update status.");
+                throw new Error(result.alert || result.message || "Failed to update status.");
             }
 
             toast.success(`Appointment status changed to ${newStatus}`);
@@ -699,8 +656,8 @@ export default function Appointment() {
     };
 
     const totalAppointments = filteredAppointments.length;
-    const pendingAppointments = appointmentStatuses(filteredAppointments, "Pending").length;
-    const completedAppointments = appointmentStatuses(filteredAppointments, "Checked").length;
+    const pendingAppointments = appointmentStatuses(filteredAppointments, "pending").length;
+    const completedAppointments = appointmentStatuses(filteredAppointments, "confirmed").length;
     const isContactAutoFilled = selectedPatient && getPatientPhone(selectedPatient) === contact;
     const selectedPatientPhone = selectedPatient ? getPatientPhone(selectedPatient) : "";
 
@@ -717,23 +674,69 @@ export default function Appointment() {
         setShowReschedule(false);
     };
 
-    const handleCheckupSubmit = (checkupData) => {
+    // eslint-disable-next-line no-unused-vars
+    const handleCheckupSubmit = async (checkupData) => {
         if (checkupIndex === null) return;
 
-        const updatedAppointments = [...appointments];
-        updatedAppointments[checkupIndex] = {
-            ...updatedAppointments[checkupIndex],
-            status: "Checked",
-            checkupReport: {
-                ...checkupData,
-                hospital: "Shifa International Hospital",
-                checkedAt: new Date().toISOString()
+        const appointmentToUpdate = appointments[checkupIndex];
+
+        // Format time for backend
+        const formatTimeForBackend = (timeStr) => {
+            if (!timeStr) return "";
+            try {
+                const timeParts = String(timeStr).split(' ');
+                if (timeParts.length > 1 && (timeParts[1].toUpperCase() === 'AM' || timeParts[1].toUpperCase() === 'PM')) {
+                    const [time, period] = timeParts;
+                    const [hours, minutes] = time.split(':');
+                    let hour = parseInt(hours, 10);
+                    if (period.toUpperCase() === 'PM' && hour < 12) hour += 12;
+                    else if (period.toUpperCase() === 'AM' && hour === 12) hour = 0;
+                    return `${String(hour).padStart(2, '0')}:${minutes.padStart(2, '0')}:00`;
+                } else {
+                    const [hours, minutes] = timeStr.split(':');
+                    return `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')}:00`;
+                }
+            } catch (error) {
+                console.error("Error formatting time:", error);
+                return timeStr;
             }
         };
 
-        setAppointments(updatedAppointments);
-        setShowCheckup(false);
-        setCheckupIndex(null);
+        const aptTime = formatTimeForBackend(appointmentToUpdate.time);
+
+        const updateData = {
+            apt_Id: appointmentToUpdate.id,
+            patient_id: appointmentToUpdate.patientId,
+            doc_id: appointmentToUpdate.doctorId,
+            doc_apt_date: appointmentToUpdate.date,
+            apt_time: aptTime,
+            apt_status: "confirmed",
+        };
+
+        try {
+            const token = localStorage.getItem("token");
+            const response = await fetch(`${API_BASE_URL}/appointments/edit-appointment/${appointmentToUpdate.id}`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify(updateData),
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.alert || result.message || "Failed to update status.");
+            }
+
+            toast.success("Checkup completed and appointment confirmed!");
+            fetchData();
+            setShowCheckup(false);
+            setCheckupIndex(null);
+        } catch (error) {
+            toast.error(error.message);
+        }
     };
 
     const handleSearchChange = (e) => {
@@ -772,7 +775,7 @@ export default function Appointment() {
                         </div>
                         <div className="stat-card completed">
                             <span className="stat-number">{completedAppointments}</span>
-                            <span className="stat-label">Checked</span>
+                            <span className="stat-label">Confirmed</span>
                         </div>
                     </div>
                 </header>
@@ -820,7 +823,7 @@ export default function Appointment() {
                 )}
 
                 {/* Main Modal */}
-                {console.debug("Passing availableSlots to Modal:", availableSlots)}
+
                 <Modal
                     ModalLabel={ModalLabel}
                     showModal={showModal}
@@ -926,8 +929,8 @@ export default function Appointment() {
                                         className="filter-select"
                                     >
                                         <option value="all">All Status</option>
-                                        <option value="Pending">Pending</option>
-                                        <option value="Checked">Checked</option>
+                                        <option value="pending">Pending</option>
+                                        <option value="confirmed">Confirmed</option>
                                     </select>
                                 </div>
 
@@ -1018,6 +1021,7 @@ export default function Appointment() {
                                                     <span
                                                         className={`status-cell ${appt.status.toLowerCase()}`}
                                                         onClick={() => toggleStatus(index + firstIndex)}
+                                                        style={{ cursor: 'pointer' }}
                                                     >
                                                         {appt.status}
                                                     </span>
@@ -1068,7 +1072,7 @@ export default function Appointment() {
                                                             setCheckupIndex(originalIndex);
                                                             setShowCheckup(true);
                                                         }}
-                                                        disabled={appt.status === "Checked"}
+                                                        disabled={appt.status === "confirmed"}
                                                     >
                                                         <Icon icon="mdi:clipboard-check-outline" />
                                                     </button>

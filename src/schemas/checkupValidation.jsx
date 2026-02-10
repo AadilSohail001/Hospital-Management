@@ -6,9 +6,6 @@ export const checkupValidation = Yup.object().shape({
         .min(10, 'Complaint must be at least 10 characters')
         .max(500, 'Complaint must not exceed 500 characters'),
 
-    allergy: Yup.string()
-        .max(200, 'Allergy information must not exceed 200 characters'),
-
     history: Yup.string()
         .max(500, 'Medical history must not exceed 500 characters'),
 
@@ -39,21 +36,6 @@ export const checkupValidation = Yup.object().shape({
         .min(35.0, 'Temperature must be at least 35.0°C')
         .max(42.0, 'Temperature must not exceed 42.0°C'),
 
-    oxygenSaturation: Yup.number()
-        .typeError('Oxygen saturation must be a number')
-        .required('Oxygen saturation is required')
-        .min(70, 'Oxygen saturation must be at least 70%')
-        .max(100, 'Oxygen saturation must not exceed 100%'),
-
-    oxygenSource: Yup.string()
-        .required('Oxygen source is required'),
-
-    otherExamination: Yup.string()
-        .max(300, 'Other examination findings must not exceed 300 characters'),
-
-    // Investigations
-    investigations: Yup.string()
-        .max(500, 'Investigations must not exceed 500 characters'),
 
     // Diagnosis
     diagnosis: Yup.string()
@@ -61,24 +43,6 @@ export const checkupValidation = Yup.object().shape({
         .min(10, 'Diagnosis must be at least 10 characters')
         .max(300, 'Diagnosis must not exceed 300 characters'),
 
-    // Treatment
-    treatment: Yup.string()
-        .required('Treatment plan is required')
-        .min(10, 'Treatment plan must be at least 10 characters')
-        .max(500, 'Treatment plan must not exceed 500 characters'),
-
-    // Recommendation
-    recommendation: Yup.string()
-        .max(300, 'Recommendation must not exceed 300 characters'),
-
-    // Travel Recommendation
-    fitToFly: Yup.boolean(),
-    seatType: Yup.string()
-        .oneOf(['ordinary', 'wheelchair', 'stretcher', 'business'], 'Invalid seat type'),
-    travelEscort: Yup.string()
-        .oneOf(['unescorted', 'nonMedical', 'medical'], 'Invalid travel escort type'),
-    needsRepatriation: Yup.boolean(),
-    medicallyNecessary: Yup.boolean(),
 
     // Doctor's Signature
     signature: Yup.string()
