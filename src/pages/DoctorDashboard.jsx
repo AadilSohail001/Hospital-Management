@@ -5,7 +5,7 @@ import { toast } from "react-toastify";
 // import Pagination from "../components/Pagination.jsx";
 import DoctorPrescriptionModal from "../components/DoctorPrescriptionModal";
 import "../styles/DoctorDashboard.css";
-import { getData } from "../utils/apiService";
+import { getData, postData } from "../utils/apiService";
 
 export default function DoctorDashboard() {
     const navigate = useNavigate();
@@ -17,6 +17,7 @@ export default function DoctorDashboard() {
     const [showPrescriptionModal, setShowPrescriptionModal] = useState(false);
     const [selectedAppointment, setSelectedAppointment] = useState(null);
 
+    const [refreshKey, setRefreshKey] = useState(0);
 
     useEffect(() => {
         const loadDashboardData = async () => {
@@ -40,18 +41,6 @@ export default function DoctorDashboard() {
                     }
                 } catch (err) {
                     console.warn("Failed to fetch specializations", err);
-                }
-
-                // 2. Fetch Patients (to map patient_ID to name/contact)
-                let patientsList = [];
-                try {
-                    const patRes = await getData("/patients/show-patients");
-                    if (patRes.status === 200) {
-                        const patData = patRes.data;
-                        patientsList = patData.patients || patData.data || (Array.isArray(patData) ? patData : []) || [];
-                    }
-                } catch (err) {
-                    console.warn("Failed to fetch patients", err);
                 }
 
                 // 3. Fetch Doctor Profile
@@ -98,28 +87,26 @@ export default function DoctorDashboard() {
 
                 // 4. Fetch Appointments
                 try {
-                    const apptRes = await getData(`/appointments/show-appointments?doctor_id=${currentDoctor.user_Id || currentDoctor.id}`);
+                    const docId = currentDoctor.user_Id || currentDoctor.id;
+                    const apptRes = await getData(`/appointments/show-doctor-specific-appointments/${docId}`);
 
                     if (apptRes.status === 200) {
                         const apptData = apptRes.data;
-                        const myAppts = Array.isArray(apptData) ? apptData : apptData.appointments || apptData.data || [];
+                        const myAppts = apptData.formattedAppointments || [];
 
-                        // Map to display format
-                        const formattedAppts = myAppts.map(appt => {
-                            const patient = Array.isArray(patientsList)
-                                ? patientsList.find(p => p.id == appt.patient_ID || p.patient_id == appt.patient_ID)
-                                : null;
-
-                            return {
-                                id: appt.id || appt.appointment_id,
-                                patientName: String(patient?.patient_name || patient?.name || 'Unknown Patient'),
-                                contact: String(patient?.contact || appt.contact || "Not provided"),
-                                date: appt.appointment_date || appt.date,
-                                time: appt.appointment_time || appt.time,
-                                status: String(appt.appointment_status || appt.status || "Pending")
-                            };
-                        });
-
+                        // Filter for confirmed appointments and map to display format
+                        // Show confirmed and attended appointments
+                        const formattedAppts = myAppts
+                            .map(appt => ({
+                                id: appt.appointment_id, // Assuming API provides an ID
+                                patientName: appt.patient,
+                                contact: appt.patient_contact,
+                                date: appt.appointment_date,
+                                time: appt.appointment_time,
+                                status: appt.appointment_status,
+                                patientId: appt.patient_ID,
+                                doctorId: docId
+                            }));
                         setAppointments(formattedAppts);
                     }
                 } catch (apptErr) {
@@ -135,7 +122,7 @@ export default function DoctorDashboard() {
         };
 
         loadDashboardData();
-    }, [navigate]);
+    }, [navigate, refreshKey]);
 
     const openPrescriptionModal = (appointment) => {
         setSelectedAppointment(appointment);
@@ -147,7 +134,36 @@ export default function DoctorDashboard() {
         setShowPrescriptionModal(false);
     };
 
+    const handlePrescriptionSubmit = async (diagnosisData, setSubmitting) => {
+        try {
+            // 1. Save the diagnosis
+            const diagnosisResponse = await postData("/patient-diagnosis/write-diagnosis", diagnosisData);
 
+            if (diagnosisResponse.status !== 200) {
+                throw new Error(diagnosisResponse.data?.message || "Failed to save diagnosis.");
+            }
+
+            toast.success(diagnosisResponse.data.message || "Diagnosis saved successfully!");
+
+            // 2. Change appointment status to "attended"
+            const statusChangePayload = {
+                apt_id: diagnosisData.apt_id,
+                apt_status: "attended"
+            };
+            const statusResponse = await postData("/appointments/staff-change-apt-status", statusChangePayload);
+
+            if (statusResponse.status !== 200) {
+                toast.warn("Diagnosis saved, but failed to update appointment status.");
+            }
+
+            closePrescriptionModal();
+            setRefreshKey(oldKey => oldKey + 1); // Trigger a refresh of the dashboard data
+        } catch (error) {
+            toast.error(error.message);
+        } finally {
+            setSubmitting(false);
+        }
+    };
 
     if (loading) {
         return <div style={{ textAlign: "center", padding: "2rem" }}>Loading Dashboard...</div>;
@@ -158,7 +174,7 @@ export default function DoctorDashboard() {
     }
 
     const pendingAppointments = appointments.filter(a => a.status === "Pending").length;
-    const completedAppointments = appointments.filter(a => a.status === "Checked").length;
+    const completedAppointments = appointments.filter(a => ["confirmed", "attended"].includes(a.status.toLowerCase())).length;
 
     return (
         <div className="doctor-dashboard-page">
@@ -185,7 +201,7 @@ export default function DoctorDashboard() {
                     <span className="doctor-stat-number">{pendingAppointments}</span>
                     <span className="doctor-stat-label">Pending</span>
                 </div>
-                <div className="doctor-stat-card completed">
+                <div className="doctor-stat-card confirmed">
                     <Icon icon="mdi:check-circle" className="doctor-stat-icon" />
                     <span className="doctor-stat-number">{completedAppointments}</span>
                     <span className="doctor-stat-label">Completed</span>
@@ -239,7 +255,7 @@ export default function DoctorDashboard() {
                                             className="table-btn checkup"
                                             title="Doctor Prescription"
                                             onClick={() => openPrescriptionModal(appt)}
-                                            disabled={appt.status === "Checked"}
+                                            disabled={appt.status.toLowerCase() === "attended"}
                                         >
                                             <Icon icon="mdi:clipboard-check-outline" />
                                         </button>
@@ -258,10 +274,7 @@ export default function DoctorDashboard() {
                         show
                         appointment={selectedAppointment}
                         onClose={closePrescriptionModal}
-                        onSubmit={() => {
-                            toast.success("Prescription saved");
-                            closePrescriptionModal();
-                        }}
+                        onSubmit={handlePrescriptionSubmit}
                     />
                 </div>
             )}

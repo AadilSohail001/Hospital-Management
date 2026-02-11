@@ -17,7 +17,6 @@ const API_BASE_URL = "http://localhost:8080/hospital";
 export default function Appointment() {
     // Safe state initialization
     const [doctors, setDoctors] = useState([]);
-    const [patients, setPatients] = useState([]);
     const [appointments, setAppointments] = useState([]);
     const [filteredAppointments, setFilteredAppointments] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -48,106 +47,86 @@ export default function Appointment() {
     const [dateFilter, setDateFilter] = useState("all");
     const [statusFilter, setStatusFilter] = useState("all");
 
-    // Pagination
+    // New state for patient search in modal
+    const [patientSearchId, setPatientSearchId] = useState("");
+    const [searchedPatient, setSearchedPatient] = useState(null);
+    const [patientSearchLoading, setPatientSearchLoading] = useState(false);
+    const [patientSearchError, setPatientSearchError] = useState(null);
+
+    // Pagination State
     const [currentPage, setCurrentPage] = useState(1);
-    const recordsPerPage = 3;
-    const lastIndex = currentPage * recordsPerPage;
-    const firstIndex = lastIndex - recordsPerPage;
-
-    const paginatedAppointments = Array.isArray(filteredAppointments)
-        ? filteredAppointments.slice(firstIndex, lastIndex)
-        : [];
-
-    const totalPages = Math.ceil(filteredAppointments.length / recordsPerPage);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalAllAppointments, setTotalAllAppointments] = useState(0);
+    const recordsPerPage = 4;
 
     const getPatientPhone = useCallback(
         (patientId) => {
-            if (!patientId || !Array.isArray(patients)) return "";
-            const patient = patients.find((p) => p.id == patientId);
-            return patient?.contact || "";
+            if (!patientId) return "";
+
+            // Check searched patient first
+            if (searchedPatient && (searchedPatient.id == patientId)) {
+                return searchedPatient.contact || "";
+            }
+
+            return "";
         },
-        [patients]
+        [searchedPatient]
     );
 
-    // Function to filter appointments based on search and date filter
-    const filterAppointments = useCallback(() => {
-        let filtered = [...appointments];
+    const handlePatientSearch = async (e) => {
+        if (e) e.preventDefault();
 
-        // Apply search filter
-        if (searchTerm.trim()) {
-            const term = searchTerm.toLowerCase().trim();
-            filtered = filtered.filter(appt => {
-                const patientName = String(appt.patientName || '').toLowerCase();
-                const doctorName = String(appt.doctorName || '').toLowerCase();
-                const contact = String(appt.contact || '').toLowerCase();
-                const status = String(appt.status || '').toLowerCase();
-                const date = String(appt.date || '');
-                const time = String(appt.time || '');
+        if (!patientSearchId.trim()) {
+            toast.error("Please enter a Patient ID to search.");
+            return;
+        }
+        setPatientSearchLoading(true);
+        setPatientSearchError(null);
+        setSearchedPatient(null);
+        setSelectedPatient("");
 
-                return patientName.includes(term) ||
-                    doctorName.includes(term) ||
-                    contact.includes(term) ||
-                    date.includes(term) ||
-                    time.includes(term) ||
-                    status.includes(term);
+        try {
+            const token = localStorage.getItem("token");
+            const response = await fetch(`${API_BASE_URL}/users/fetch-patient?pt_id=${patientSearchId}`, {
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
             });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || `Patient with ID ${patientSearchId} not found.`);
+            }
+
+            const patientData = await response.json();
+            if (patientData && patientData.id) {
+                // The API for fetch-patient might only return id and name.
+                const completePatientData = {
+                    ...patientData,
+                    contact: patientData.contact || ""
+                };
+
+                setSearchedPatient(completePatientData);
+                setSelectedPatient(completePatientData.id.toString());
+
+                setContact(completePatientData.contact || "");
+                toast.success(`Patient "${completePatientData.patient_name}" found and selected.`);
+            } else {
+                throw new Error(`Patient with ID ${patientSearchId} not found.`);
+            }
+
+        } catch (error) {
+            setPatientSearchError(error.message);
+            toast.error(error.message);
+            setSelectedPatient("");
+        } finally {
+            setPatientSearchLoading(false);
         }
-
-        // Apply date filter
-        if (dateFilter !== "all") {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-
-            filtered = filtered.filter(appt => {
-                try {
-                    if (!appt.date) return false;
-
-                    const appointmentDate = new Date(appt.date);
-                    if (isNaN(appointmentDate.getTime())) return false;
-
-                    // normalize both dates to start of day
-                    appointmentDate.setHours(0, 0, 0, 0);
-
-                    // compute end date based on selected filter (inclusive)
-                    let endDate = new Date(today.getTime());
-                    switch (dateFilter) {
-                        case "today":
-                            // endDate stays as today
-                            break;
-                        case "2days":
-                            endDate = new Date(today.getTime() + 2 * 24 * 60 * 60 * 1000);
-                            break;
-                        case "3days":
-                            endDate = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000);
-                            break;
-                        case "7days":
-                            endDate = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
-                            break;
-                        default:
-                            // if unknown filter, include all
-                            return true;
-                    }
-
-                    // include appointments from today up to endDate (inclusive)
-                    return appointmentDate.getTime() >= today.getTime() && appointmentDate.getTime() <= endDate.getTime();
-                } catch (error) {
-                    console.error("Error parsing date:", appt.date, error);
-                    return false;
-                }
-            });
-        }
-
-        // Apply status filter
-        if (statusFilter !== "all") {
-            filtered = filtered.filter(appt => appt.status === statusFilter);
-        }
-
-        setFilteredAppointments(filtered);
-        setCurrentPage(1);
-    }, [appointments, searchTerm, dateFilter, statusFilter]);
+    };
 
     // Load data on mount safely
-    const fetchData = useCallback(async () => {
+    const fetchData = useCallback(async (page = 1) => {
         setLoading(true);
         try {
             const token = localStorage.getItem("token");
@@ -197,42 +176,44 @@ export default function Appointment() {
                 console.warn("Could not fetch doctors:", doctorError);
             }
 
-            // Fetch patients
-            let patientsData = [];
-            try {
-                const patientsRes = await fetch(`${API_BASE_URL}/patients/show-patients`, {
-                    method: "GET",
-                    headers,
-                });
-
-                if (patientsRes.ok) {
-                    const response = await patientsRes.json();
-                    patientsData = response.patientsShown || response.patients || response.data || (Array.isArray(response) ? response : []);
-                } else {
-                    console.warn("Failed to fetch patients:", patientsRes.status);
-                }
-            } catch (patientError) {
-                console.warn("Could not fetch patients:", patientError);
-            }
-
-            // Fetch appointments - FIXED: No query parameters needed
+            // Fetch appointments with pagination
             let appointmentsList = [];
+            let totalAppointmentsFromAPI = 0;
+
             try {
-                const appointmentsRes = await fetch(`${API_BASE_URL}/appointments/show-appointments`, {
+                // Handle page parameter based on your API requirements
+                const pageParam = page === 1 ? "firstPage" : page;
+                const appointmentsRes = await fetch(`${API_BASE_URL}/appointments/show-appointments?page=${pageParam}`, {
                     method: "GET",
                     headers,
                 });
 
                 if (appointmentsRes.ok) {
                     const response = await appointmentsRes.json();
-                    // FIXED: Handle the response format correctly
+
+
+                    // Handle the response format correctly
                     if (response.formattedAppointments) {
                         appointmentsList = response.formattedAppointments;
+                        totalAppointmentsFromAPI = response.totalAppointments || 0;
+                        setCurrentPage(Number(response.currentPage) || 1);
+
+                        // Calculate total pages
+                        const calculatedTotalPages = Math.ceil(totalAppointmentsFromAPI / recordsPerPage);
+                        setTotalPages(calculatedTotalPages > 0 ? calculatedTotalPages : 1);
                     } else if (Array.isArray(response)) {
                         appointmentsList = response;
+                        totalAppointmentsFromAPI = response.length;
+                        setTotalPages(1);
                     } else {
                         appointmentsList = response.appointments || response.data || [];
+                        totalAppointmentsFromAPI = response.totalAppointments || response.total || appointmentsList.length;
+                        setCurrentPage(response.currentPage || 1);
+                        const calculatedTotalPages = Math.ceil(totalAppointmentsFromAPI / recordsPerPage);
+                        setTotalPages(calculatedTotalPages > 0 ? calculatedTotalPages : 1);
                     }
+
+                    setTotalAllAppointments(totalAppointmentsFromAPI);
                 } else {
                     console.warn("Could not fetch appointments:", appointmentsRes.status);
                 }
@@ -242,21 +223,17 @@ export default function Appointment() {
 
             // Format appointments
             const formattedAppointments = appointmentsList.map(appt => {
-                const patient = Array.isArray(patientsData)
-                    ? patientsData.find(p => p.id == appt.patient_ID || p.patient_id == appt.patient_ID)
-                    : null;
-
                 const doctor = Array.isArray(doctorsData)
                     ? doctorsData.find(d => d.user_Id == appt.doctor_ID || d.id == appt.doctor_ID)
                     : null;
 
                 return {
-                    id: appt.appointment_id || appt.id,
-                    patientName: String(patient?.patient_name || patient?.name || 'Unknown Patient'),
-                    patientId: appt.patient_ID || patient?.id,
+                    id: appt.id,
+                    patientName: String(appt.patient_name || 'Unknown Patient'),
+                    patientId: appt.patient_ID,
                     doctorName: String(doctor?.user_name || doctor?.name || 'Unknown Doctor'),
-                    doctorId: appt.doctor_ID || doctor?.user_Id || doctor?.id,
-                    contact: String(patient?.contact || appt.contact || "Not provided"),
+                    doctorId: appt.doctor_ID,
+                    contact: String(appt.contact || "Not provided"),
                     date: appt.appointment_date || appt.date,
                     time: appt.appointment_time || appt.time,
                     status: String(appt.appointment_status || appt.status || "Pending"),
@@ -280,7 +257,6 @@ export default function Appointment() {
             });
 
             setDoctors(doctorsList);
-            setPatients(Array.isArray(patientsData) ? patientsData : []);
 
         } catch (error) {
             if (!error.message.includes("Failed to fetch")) {
@@ -292,13 +268,89 @@ export default function Appointment() {
     }, []);
 
     useEffect(() => {
-        fetchData();
+        fetchData(1);
     }, [fetchData]);
 
     // Apply filters whenever search term or date filter changes
     useEffect(() => {
+        const filterAppointments = () => {
+            let filtered = [...appointments];
+
+            // Apply search filter
+            if (searchTerm.trim()) {
+                const term = searchTerm.toLowerCase().trim();
+                filtered = filtered.filter(appt => {
+                    const patientName = String(appt.patientName || '').toLowerCase();
+                    const doctorName = String(appt.doctorName || '').toLowerCase();
+                    const contact = String(appt.contact || '').toLowerCase();
+                    const status = String(appt.status || '').toLowerCase();
+                    const date = String(appt.date || '');
+                    const time = String(appt.time || '');
+
+                    return patientName.includes(term) ||
+                        doctorName.includes(term) ||
+                        contact.includes(term) ||
+                        date.includes(term) ||
+                        time.includes(term) ||
+                        status.includes(term);
+                });
+            }
+
+            // Apply date filter
+            if (dateFilter !== "all") {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+
+                filtered = filtered.filter(appt => {
+                    try {
+                        if (!appt.date) return false;
+
+                        const appointmentDate = new Date(appt.date);
+                        if (isNaN(appointmentDate.getTime())) return false;
+
+                        // normalize both dates to start of day
+                        appointmentDate.setHours(0, 0, 0, 0);
+
+                        // compute end date based on selected filter (inclusive)
+                        let endDate = new Date(today.getTime());
+                        switch (dateFilter) {
+                            case "today":
+                                // endDate stays as today
+                                break;
+                            case "2days":
+                                endDate = new Date(today.getTime() + 2 * 24 * 60 * 60 * 1000);
+                                break;
+                            case "3days":
+                                endDate = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000);
+                                break;
+                            case "7days":
+                                endDate = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+                                break;
+                            default:
+                                // if unknown filter, include all
+                                return true;
+                        }
+
+                        // include appointments from today up to endDate (inclusive)
+                        return appointmentDate.getTime() >= today.getTime() && appointmentDate.getTime() <= endDate.getTime();
+                    } catch (error) {
+                        console.error("Error parsing date:", appt.date, error);
+                        return false;
+                    }
+                });
+            }
+
+            // Apply status filter
+            if (statusFilter !== "all") {
+                filtered = filtered.filter(appt => appt.status === statusFilter);
+            }
+
+            setFilteredAppointments(filtered);
+        };
+
         filterAppointments();
-    }, [filterAppointments]);
+    }, [appointments, searchTerm, dateFilter, statusFilter]);
+
 
     // Fetch available slots when doctor and date change
     useEffect(() => {
@@ -330,7 +382,7 @@ export default function Appointment() {
 
                 const docId = parseInt(selectedDoctor, 10) || selectedDoctor;
 
-                // FIXED: Use the correct endpoint with proper payload
+                // Use the correct endpoint with proper payload
                 const response = await fetch(`${API_BASE_URL}/appointments/create-appointment`, {
                     method: "POST",
                     headers: {
@@ -350,7 +402,7 @@ export default function Appointment() {
 
                 const data = await response.json();
 
-                // FIXED: Handle the response format correctly
+                // Handle the response format correctly
                 if (data.formattedSlots && Array.isArray(data.formattedSlots)) {
                     setAvailableSlots(data.formattedSlots);
                     setScheduleId(data.schedule_id || null);
@@ -379,7 +431,7 @@ export default function Appointment() {
         fetchAvailableSlots();
     }, [selectedDoctor, selectedDate]);
 
-    // FIXED: handleSubmit function with proper error handling
+    // handleSubmit function with proper error handling
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!selectedDoctor || !selectedPatient || !selectedDate || !selectedTime) {
@@ -449,19 +501,19 @@ export default function Appointment() {
                 if (response.status === 409) {
                     const existingAppt = result.existingAppointment || appointmentData;
                     const doctor = doctors.find(d => d.user_Id == selectedDoctor);
-                    const patient = patients.find(p => p.id == selectedPatient);
+                    const patientName = (searchedPatient && searchedPatient.id == selectedPatient) ? searchedPatient.patient_name : 'Unknown Patient';
 
                     setConflictAppointment({
                         ...existingAppt,
                         doctorName: doctor?.user_name || 'Unknown Doctor',
-                        patientName: patient?.patient_name || 'Unknown Patient'
+                        patientName: patientName
                     });
                 }
                 throw new Error(result.alert || result.message || result.error || `Failed to ${isEditing ? 'update' : 'create'} appointment.`);
             }
 
             toast.success(result.success || result.alert || `Appointment ${isEditing ? 'updated' : 'created'} successfully!`);
-            fetchData();
+            fetchData(currentPage);
             closeModal();
 
         } catch (error) {
@@ -504,16 +556,25 @@ export default function Appointment() {
             }
 
             toast.success(result.alert || result.success || "Appointment deleted successfully!");
-            fetchData();
+            fetchData(currentPage);
         } catch (error) {
             toast.error(error.message || "Error deleting appointment");
         }
     };
 
-    // FIXED: handleEdit function with proper time formatting
+    // handleEdit function with proper time formatting
     const handleEdit = (index) => {
         const appt = filteredAppointments[index];
         if (!appt) return;
+
+        // Pre-populate patient info for the modal
+        if (appt.patientId && appt.patientName) {
+            setSearchedPatient({
+                id: appt.patientId,
+                patient_name: appt.patientName,
+                contact: appt.contact
+            });
+        }
 
         const originalIndex = appointments.findIndex(a => a.id === appt.id);
 
@@ -521,7 +582,7 @@ export default function Appointment() {
         setSelectedDoctor(appt.doctorId?.toString() || "");
         setSelectedDate(appt.date || "");
 
-        // FIXED: Convert backend time format (hh:mm:ss A) to input format (HH:MM)
+        // Convert backend time format (hh:mm:ss A) to input format (HH:MM)
         let timeVal = appt.time || "";
         if (timeVal) {
             try {
@@ -560,7 +621,7 @@ export default function Appointment() {
         setShowModal(true);
     };
 
-    // FIXED: toggleStatus function with proper data format
+    // toggleStatus function with proper data format
     const toggleStatus = async (index) => {
         const appointmentToUpdate = filteredAppointments[index];
         if (!appointmentToUpdate || !appointmentToUpdate.id) return;
@@ -626,7 +687,7 @@ export default function Appointment() {
             }
 
             toast.success(`Appointment status changed to ${newStatus}`);
-            fetchData();
+            fetchData(currentPage);
         } catch (error) {
             toast.error(error.message);
         }
@@ -643,6 +704,10 @@ export default function Appointment() {
         setConflictAppointment(null);
         setAvailableSlots([]);
         setScheduleId(null);
+        // Reset patient search state
+        setPatientSearchId("");
+        setSearchedPatient(null);
+        setPatientSearchError(null);
     };
 
     const openModal = () => {
@@ -655,18 +720,18 @@ export default function Appointment() {
         setShowModal(false);
     };
 
-    const totalAppointments = filteredAppointments.length;
+    const totalFilteredAppointments = filteredAppointments.length;
+    const totalAllAppointmentsCount = totalAllAppointments;
     const pendingAppointments = appointmentStatuses(filteredAppointments, "pending").length;
     const completedAppointments = appointmentStatuses(filteredAppointments, "confirmed").length;
-    const isContactAutoFilled = selectedPatient && getPatientPhone(selectedPatient) === contact;
+    const isContactAutoFilled = selectedPatient && contact && getPatientPhone(selectedPatient) === contact;
     const selectedPatientPhone = selectedPatient ? getPatientPhone(selectedPatient) : "";
 
     const handleNavigation = (direction) => {
         if (direction === "next" && currentPage < totalPages) {
-            setCurrentPage((prev) => prev + 1);
-        }
-        if (direction === "prev" && currentPage > 1) {
-            setCurrentPage((prev) => prev - 1);
+            fetchData(currentPage + 1);
+        } else if (direction === "prev" && currentPage > 1) {
+            fetchData(currentPage - 1);
         }
     };
 
@@ -680,42 +745,14 @@ export default function Appointment() {
 
         const appointmentToUpdate = appointments[checkupIndex];
 
-        // Format time for backend
-        const formatTimeForBackend = (timeStr) => {
-            if (!timeStr) return "";
-            try {
-                const timeParts = String(timeStr).split(' ');
-                if (timeParts.length > 1 && (timeParts[1].toUpperCase() === 'AM' || timeParts[1].toUpperCase() === 'PM')) {
-                    const [time, period] = timeParts;
-                    const [hours, minutes] = time.split(':');
-                    let hour = parseInt(hours, 10);
-                    if (period.toUpperCase() === 'PM' && hour < 12) hour += 12;
-                    else if (period.toUpperCase() === 'AM' && hour === 12) hour = 0;
-                    return `${String(hour).padStart(2, '0')}:${minutes.padStart(2, '0')}:00`;
-                } else {
-                    const [hours, minutes] = timeStr.split(':');
-                    return `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')}:00`;
-                }
-            } catch (error) {
-                console.error("Error formatting time:", error);
-                return timeStr;
-            }
-        };
-
-        const aptTime = formatTimeForBackend(appointmentToUpdate.time);
-
         const updateData = {
-            apt_Id: appointmentToUpdate.id,
-            patient_id: appointmentToUpdate.patientId,
-            doc_id: appointmentToUpdate.doctorId,
-            doc_apt_date: appointmentToUpdate.date,
-            apt_time: aptTime,
-            apt_status: "confirmed",
+            apt_id: appointmentToUpdate.id,
+            apt_status: "confirmed"
         };
 
         try {
             const token = localStorage.getItem("token");
-            const response = await fetch(`${API_BASE_URL}/appointments/edit-appointment/${appointmentToUpdate.id}`, {
+            const response = await fetch(`${API_BASE_URL}/appointments/staff-change-apt-status`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -730,8 +767,8 @@ export default function Appointment() {
                 throw new Error(result.alert || result.message || "Failed to update status.");
             }
 
-            toast.success("Checkup completed and appointment confirmed!");
-            fetchData();
+            toast.success(result.message || "Checkup completed and appointment confirmed!");
+            fetchData(currentPage);
             setShowCheckup(false);
             setCheckupIndex(null);
         } catch (error) {
@@ -766,7 +803,7 @@ export default function Appointment() {
                     </h1>
                     <div className="appointment-stats">
                         <div className="stat-card">
-                            <span className="stat-number">{totalAppointments}</span>
+                            <span className="stat-number">{totalAllAppointmentsCount}</span>
                             <span className="stat-label">Total</span>
                         </div>
                         <div className="stat-card pending">
@@ -823,14 +860,19 @@ export default function Appointment() {
                 )}
 
                 {/* Main Modal */}
-
                 <Modal
                     ModalLabel={ModalLabel}
                     showModal={showModal}
                     closeModal={closeModal}
                     editIndex={editIndex}
                     handleSubmit={handleSubmit}
-                    patients={patients}
+                    // Add new props for patient search
+                    patientSearchId={patientSearchId}
+                    setPatientSearchId={setPatientSearchId}
+                    handlePatientSearch={handlePatientSearch}
+                    searchedPatient={searchedPatient}
+                    patientSearchLoading={patientSearchLoading}
+                    patientSearchError={patientSearchError}
                     doctors={doctors}
                     selectedPatient={selectedPatient}
                     setSelectedPatient={setSelectedPatient}
@@ -859,7 +901,7 @@ export default function Appointment() {
                     appointmentIndex={rescheduleIndex}
                     appointments={appointments}
                     setAppointments={setAppointments}
-                    onSuccess={fetchData}
+                    onSuccess={() => fetchData(currentPage)}
                 />
 
                 {/* Checkup Modal */}
@@ -881,6 +923,7 @@ export default function Appointment() {
                         <div className="appointment-list-header">
                             <h2>
                                 <Icon icon="mdi:clipboard-list" /> Scheduled Appointments
+                                <span className="page-info">(Page {currentPage} of {totalPages})</span>
                             </h2>
 
                             <div className="search-filter-container">
@@ -955,7 +998,7 @@ export default function Appointment() {
                             <div className="filter-status-info">
                                 <Icon icon="mdi:filter" />
                                 <span>
-                                    Showing {filteredAppointments.length} of {appointments.length} appointments
+                                    Showing {totalFilteredAppointments} of {appointments.length} appointments
                                     {searchTerm && ` matching "${searchTerm}"`}
                                     {dateFilter !== "all" &&
                                         ` from ${dateFilter === "today" ? "today" :
@@ -1015,12 +1058,12 @@ export default function Appointment() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {paginatedAppointments.map((appt, index) => (
+                                        {filteredAppointments.map((appt, index) => (
                                             <tr key={appt.id || index}>
                                                 <td>
                                                     <span
                                                         className={`status-cell ${appt.status.toLowerCase()}`}
-                                                        onClick={() => toggleStatus(index + firstIndex)}
+                                                        onClick={() => toggleStatus(index)}
                                                         style={{ cursor: 'pointer' }}
                                                     >
                                                         {appt.status}
@@ -1037,7 +1080,7 @@ export default function Appointment() {
                                                     <button
                                                         type="button"
                                                         className="table-btn edit"
-                                                        onClick={() => handleEdit(index + firstIndex)}
+                                                        onClick={() => handleEdit(index)}
                                                         title="Edit"
                                                     >
                                                         <Icon icon="mdi:pencil" />
@@ -1045,7 +1088,7 @@ export default function Appointment() {
                                                     <button
                                                         type="button"
                                                         className="table-btn delete"
-                                                        onClick={() => handleDelete(index + firstIndex)}
+                                                        onClick={() => handleDelete(index)}
                                                         disabled={String(appt.status).toLowerCase() !== "pending"}
                                                         title={String(appt.status).toLowerCase() === "pending" ? "Delete" : "Only pending appointments can be deleted"}
                                                     >
@@ -1081,12 +1124,15 @@ export default function Appointment() {
                                         ))}
                                     </tbody>
                                 </table>
-                                <Pagination
-                                    currentPage={currentPage}
-                                    totalPages={totalPages}
-                                    onPrev={() => handleNavigation("prev")}
-                                    onNext={() => handleNavigation("next")}
-                                />
+
+                                {totalPages > 1 && (
+                                    <Pagination
+                                        currentPage={currentPage}
+                                        totalPages={totalPages}
+                                        onPrev={() => handleNavigation("prev")}
+                                        onNext={() => handleNavigation("next")}
+                                    />
+                                )}
                             </div>
                         )}
                     </div>

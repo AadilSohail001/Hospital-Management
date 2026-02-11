@@ -9,7 +9,6 @@ export default function Modal({
     ModalLabel,
     editIndex,
     handleSubmit,
-    patients = [], // Ensure default array
     doctors = [],  // Ensure default array
     selectedPatient,
     selectedDoctor,
@@ -17,32 +16,24 @@ export default function Modal({
     selectedTime,
     contact,
     availableSlots = [],
-    setSelectedPatient,
     setSelectedDoctor,
     setSelectedDate,
     setSelectedTime,
     setContact,
     isContactAutoFilled,
-    onRescheduleClick
+    onRescheduleClick,
+    patientSearchId,
+    setPatientSearchId,
+    handlePatientSearch,
+    searchedPatient,
+    patientSearchLoading,
+    patientSearchError
 }) {
     const isEditMode = editIndex !== null;
 
 
 
     if (!showModal) return null;
-
-    // FIXED: Better patient options with null checks
-    const patientOptions = Array.isArray(patients) ? patients.map(p => {
-        if (!p) return null;
-        const patientId = p.id || p.patient_id || "";
-        const patientName = p.patient_name || p.name || "Unknown Patient";
-        const patientContact = p.contact || "No contact";
-
-        return {
-            value: patientId.toString(),
-            label: `ID: ${patientId} - ${patientName} (${patientContact})`
-        };
-    }).filter(Boolean) : [];
 
     // FIXED: Better doctor options with null checks
     const doctorOptions = Array.isArray(doctors) ? doctors.map(d => {
@@ -57,26 +48,6 @@ export default function Modal({
         };
     }).filter(Boolean) : [];
 
-
-    const handlePatientSelectChange = (selectedOption) => {
-
-        if (selectedOption) {
-            setSelectedPatient(selectedOption.value);
-            // Find patient and set contact
-            const patient = patients.find(p => {
-                const pId = p.id || p.patient_id;
-                return pId && pId.toString() === selectedOption.value.toString();
-            });
-
-            if (patient) {
-                setContact(patient.contact || "");
-
-            }
-        } else {
-            setSelectedPatient("");
-            setContact("");
-        }
-    };
 
     // FIXED: Better slot normalization
     const normalizeSlots = (slots) => {
@@ -134,10 +105,11 @@ export default function Modal({
             : "Select time slot";
 
     // Find current patient for display
-    const currentPatient = patients.find(p => {
-        const pId = p.id || p.patient_id;
-        return pId && pId.toString() === selectedPatient.toString();
-    });
+    let currentPatient = null;
+
+    if (searchedPatient && selectedPatient && searchedPatient.id.toString() === selectedPatient.toString()) {
+        currentPatient = searchedPatient;
+    }
 
     // eslint-disable-next-line no-unused-vars
     const currentDoctor = doctors.find(d => {
@@ -161,18 +133,26 @@ export default function Modal({
                         {/* Patient Search */}
                         <div className="form-group">
                             <label><Icon icon="mdi:account-search" /> Search Patient (ID)</label>
-                            <Select
-                                options={patientOptions}
-                                value={patientOptions.find(opt => opt.value.toString() === selectedPatient?.toString()) || null}
-                                onChange={handlePatientSelectChange}
-                                placeholder="Search by ID..."
-                                isClearable
-                                isSearchable
-                                classNamePrefix="react-select"
-                                styles={{ menu: p => ({ ...p, zIndex: 9999 }) }}
-                                noOptionsMessage={() => patientOptions.length === 0 ? "No patients found" : "Type to search..."}
-                            />
-
+                            <div style={{ display: "flex", gap: "10px" }}>
+                                <input
+                                    type="text"
+                                    value={patientSearchId || ""}
+                                    onChange={(e) => setPatientSearchId && setPatientSearchId(e.target.value)}
+                                    placeholder="Enter Patient ID"
+                                    disabled={isEditMode}
+                                    style={{ flex: 1 }}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={handlePatientSearch}
+                                    disabled={patientSearchLoading || isEditMode}
+                                    className="save-btn"
+                                    style={{ width: "auto", padding: "0 15px", minHeight: "unset" }}
+                                >
+                                    {patientSearchLoading ? <Icon icon="eos-icons:loading" /> : <Icon icon="mdi:magnify" />}
+                                </button>
+                            </div>
+                            {patientSearchError && <small style={{ color: "red", marginTop: "5px", display: "block" }}>{patientSearchError}</small>}
                         </div>
 
                         {/* Patient Name */}
