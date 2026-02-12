@@ -87,24 +87,33 @@ export default function DoctorDashboard() {
 
                 // 4. Fetch Appointments
                 try {
-                    const docId = currentDoctor.user_Id || currentDoctor.id;
+                    const docId = currentUser.doc_id || currentDoctor.doc_id || currentDoctor.user_Id || currentDoctor.id;
                     const apptRes = await getData(`/appointments/show-doctor-specific-appointments/${docId}`);
 
                     if (apptRes.status === 200) {
                         const apptData = apptRes.data;
-                        const myAppts = apptData.formattedAppointments || [];
+
+                        // Handle different response structures like Appointment.jsx
+                        let myAppts = [];
+                        if (apptData.formattedAppointments) {
+                            myAppts = apptData.formattedAppointments;
+                        } else if (Array.isArray(apptData)) {
+                            myAppts = apptData;
+                        } else {
+                            myAppts = apptData.appointments || apptData.data || [];
+                        }
 
                         // Filter for confirmed appointments and map to display format
                         // Show confirmed and attended appointments
                         const formattedAppts = myAppts
                             .map(appt => ({
-                                id: appt.appointment_id, // Assuming API provides an ID
-                                patientName: appt.patient,
-                                contact: appt.patient_contact,
-                                date: appt.appointment_date,
-                                time: appt.appointment_time,
-                                status: appt.appointment_status,
-                                patientId: appt.patient_ID,
+                                id: appt.appointment_ID || appt.appointment_id || appt.id || appt.apt_id,
+                                patientName: appt.patient_name || appt.patient || appt.name || 'Unknown Patient',
+                                contact: appt.contact || appt.patient_contact || "Not provided",
+                                date: appt.appointment_date || appt.date || appt.doc_apt_date,
+                                time: appt.appointment_time || appt.time || appt.apt_time,
+                                status: appt.appointment_status || appt.status || appt.apt_status || "Pending",
+                                patientId: appt.patient_ID || appt.patient_id || appt.pt_id,
                                 doctorId: docId
                             }));
                         setAppointments(formattedAppts);
@@ -134,34 +143,35 @@ export default function DoctorDashboard() {
         setShowPrescriptionModal(false);
     };
 
-    const handlePrescriptionSubmit = async (diagnosisData, setSubmitting) => {
+    // eslint-disable-next-line no-unused-vars
+    const handlePrescriptionSubmit = async (diagnosisData) => {
         try {
-            // 1. Save the diagnosis
-            const diagnosisResponse = await postData("/patient-diagnosis/write-diagnosis", diagnosisData);
-
-            if (diagnosisResponse.status !== 200) {
-                throw new Error(diagnosisResponse.data?.message || "Failed to save diagnosis.");
-            }
-
-            toast.success(diagnosisResponse.data.message || "Diagnosis saved successfully!");
-
-            // 2. Change appointment status to "attended"
+            // 1. Diagnosis is already saved by the Modal.
+            // 2. Now change appointment status to "attended"
             const statusChangePayload = {
-                apt_id: diagnosisData.apt_id,
+                apt_id: selectedAppointment?.id,
                 apt_status: "attended"
             };
-            const statusResponse = await postData("/appointments/staff-change-apt-status", statusChangePayload);
 
-            if (statusResponse.status !== 200) {
-                toast.warn("Diagnosis saved, but failed to update appointment status.");
+            try {
+                const statusResponse = await postData("/appointments/doc-change-apt-status", statusChangePayload);
+                if (statusResponse.status !== 200 && statusResponse.status !== 201) {
+                    console.warn("Status update response not OK:", statusResponse);
+                    toast.warn("Diagnosis saved, but failed to update appointment status.");
+                } else {
+                    toast.success("Appointment status updated to attended!");
+                }
+            } catch (statusErr) {
+                console.warn("Status update failed:", statusErr);
+                toast.warn("Diagnosis saved, but status update failed. Please update manually.");
             }
 
             closePrescriptionModal();
-            setRefreshKey(oldKey => oldKey + 1); // Trigger a refresh of the dashboard data
+            // Trigger a refresh of the dashboard data
+            setRefreshKey(oldKey => oldKey + 1);
+
         } catch (error) {
-            toast.error(error.message);
-        } finally {
-            setSubmitting(false);
+            console.error("Status update error:", error);
         }
     };
 
@@ -250,16 +260,17 @@ export default function DoctorDashboard() {
                                                 {appt.status}
                                             </span>
                                         </td>
-                                        <button
-                                            type="button"
-                                            className="table-btn checkup"
-                                            title="Doctor Prescription"
-                                            onClick={() => openPrescriptionModal(appt)}
-                                            disabled={appt.status.toLowerCase() === "attended"}
-                                        >
-                                            <Icon icon="mdi:clipboard-check-outline" />
-                                        </button>
-
+                                        <td>
+                                            <button
+                                                type="button"
+                                                className="table-btn checkup"
+                                                title="Doctor Prescription"
+                                                onClick={() => openPrescriptionModal(appt)}
+                                                disabled={appt.status.toLowerCase() === "attended"}
+                                            >
+                                                <Icon icon="mdi:clipboard-check-outline" />
+                                            </button>
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -267,6 +278,7 @@ export default function DoctorDashboard() {
                     </div>
                 )}
             </div>
+
             {/* Doctor Prescription Modal */}
             {showPrescriptionModal && (
                 <div style={{ position: "fixed", inset: 0, zIndex: 99999 }}>

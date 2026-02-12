@@ -1,3 +1,47 @@
+/* Add to CheckupModal.css */
+.allergies-section {
+    background-color: #fff9e6;
+    border-left: 4px solid #ffc107;
+    padding: 15px;
+    margin-bottom: 20px;
+    border-radius: 4px;
+}
+
+.allergies-display {
+    margin-top: 10px;
+}
+
+.allergies-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.allergy-tag {
+    background-color: #dc3545;
+    color: white;
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 500;
+    display: inline-block;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .allergy-tag {
+        font-size: 12px;
+        padding: 4px 10px;
+    }
+}
+
+
+
+
+
+
+
+
 .allergies-section {
     margin-top: 10px;
 }

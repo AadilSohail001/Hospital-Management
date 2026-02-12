@@ -68,7 +68,8 @@ export default function Login() {
                     role_ID: payload.role_id ?? payload.role_ID ?? payload.roleId,
                     email: payload.email,
                     name: payload.name || payload.user_name || payload.sub,
-                    speciality: data.speciality || data.specialization
+                    speciality: data.speciality || data.specialization,
+                    doc_id: data.doc_id
                 }
                 : null;
 
