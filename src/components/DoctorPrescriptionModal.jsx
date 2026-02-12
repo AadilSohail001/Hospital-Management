@@ -264,7 +264,7 @@ export default function DoctorPrescriptionModal({
                                         checked={showTravelDetails}
                                         onChange={() => setShowTravelDetails(prev => !prev)}
                                     />
-                                    <span>{showTravelDetails ? 'Yes' : 'No'}</span>
+                                    { /*  <span>{showTravelDetails ? 'Yes' : 'No'}</span> */}
                                 </div>
 
                                 {showTravelDetails && (
