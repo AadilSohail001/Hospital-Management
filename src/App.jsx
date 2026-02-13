@@ -63,6 +63,7 @@ import Appointment from "./pages/Appointment";
 import DoctorDashboard from "./pages/DoctorDashboard";
 
 function App() {
+
   return (
     <Routes>
       {/* PUBLIC */}
